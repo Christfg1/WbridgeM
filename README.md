@@ -67,9 +67,9 @@ Prerequisites:
 
 Steps:
 
-1. Open [windows/BridgeWindowsHost/appsettings.json](/C:/Users/CHRIS/Documents/Codex/2026-04-26-build-the-first-version-of-a/windows/BridgeWindowsHost/appsettings.json) and change `SharedSecret`.
+1. Open `windows/BridgeWindowsHost/appsettings.json` and change `SharedSecret`.
 2. Optional: change `Port` or `StorageRoot` if you want a different shared folder.
-3. Open a terminal in [windows/BridgeWindowsHost](/C:/Users/CHRIS/Documents/Codex/2026-04-26-build-the-first-version-of-a/windows/BridgeWindowsHost).
+3. Open a terminal in `windows/BridgeWindowsHost`.
 4. Run:
 
 ```powershell
@@ -104,14 +104,14 @@ Prerequisites:
 
 Option 1: Run with Xcode
 
-1. Open [mac/BridgeMac/Package.swift](/C:/Users/CHRIS/Documents/Codex/2026-04-26-build-the-first-version-of-a/mac/BridgeMac/Package.swift) in Xcode.
+1. Open `mac/BridgeMac/Package.swift` in Xcode.
 2. Let Xcode resolve the package.
 3. Choose the `BridgeMac` executable target.
 4. Run the app.
 
 Option 2: Run from Terminal
 
-1. Open a terminal in [mac/BridgeMac](/C:/Users/CHRIS/Documents/Codex/2026-04-26-build-the-first-version-of-a/mac/BridgeMac).
+1. Open a terminal in `mac/BridgeMac`.
 2. Run:
 
 ```bash
@@ -174,22 +174,22 @@ The app prompts for permission when needed. If macOS does not show the prompt, o
 
 Then enable access for the app or the built `BridgeMac` executable and relaunch if needed.
 
-More detail is in [docs/input-bridge.md](/C:/Users/CHRIS/Documents/Codex/2026-04-26-build-the-first-version-of-a/docs/input-bridge.md).
+More detail is in `docs/input-bridge.md`.
 
 ## Main Files
 
-- [windows/BridgeWindowsHost/Program.cs](/C:/Users/CHRIS/Documents/Codex/2026-04-26-build-the-first-version-of-a/windows/BridgeWindowsHost/Program.cs): HTTP and WebSocket routes
-- [windows/BridgeWindowsHost/Services/ControlMacInputBridgeService.cs](/C:/Users/CHRIS/Documents/Codex/2026-04-26-build-the-first-version-of-a/windows/BridgeWindowsHost/Services/ControlMacInputBridgeService.cs): Windows edge capture and Windows-to-Mac input forwarding
-- [windows/BridgeWindowsHost/Services/InputInjectionService.cs](/C:/Users/CHRIS/Documents/Codex/2026-04-26-build-the-first-version-of-a/windows/BridgeWindowsHost/Services/InputInjectionService.cs): native Windows mouse and keyboard injection for the reverse path
-- [windows/BridgeWindowsHost/Services/SystemStatusService.cs](/C:/Users/CHRIS/Documents/Codex/2026-04-26-build-the-first-version-of-a/windows/BridgeWindowsHost/Services/SystemStatusService.cs): Windows metrics collection
-- [windows/BridgeWindowsHost/Services/CommandRunnerService.cs](/C:/Users/CHRIS/Documents/Codex/2026-04-26-build-the-first-version-of-a/windows/BridgeWindowsHost/Services/CommandRunnerService.cs): preview + guarded command execution
-- [mac/BridgeMac/Sources/BridgeMacApp/ViewModels/BridgeViewModel.swift](/C:/Users/CHRIS/Documents/Codex/2026-04-26-build-the-first-version-of-a/mac/BridgeMac/Sources/BridgeMacApp/ViewModels/BridgeViewModel.swift): app state and sync logic for both input directions
-- [mac/BridgeMac/Sources/BridgeMacApp/Views/ContentView.swift](/C:/Users/CHRIS/Documents/Codex/2026-04-26-build-the-first-version-of-a/mac/BridgeMac/Sources/BridgeMacApp/Views/ContentView.swift): SwiftUI dashboard and mode toggles
-- [mac/BridgeMac/Sources/BridgeMacApp/Services/ControlMacFromWindowsManager.swift](/C:/Users/CHRIS/Documents/Codex/2026-04-26-build-the-first-version-of-a/mac/BridgeMac/Sources/BridgeMacApp/Services/ControlMacFromWindowsManager.swift): Mac receiver/session manager for the Windows-primary path
-- [mac/BridgeMac/Sources/BridgeMacApp/Services/MacInputInjectionService.swift](/C:/Users/CHRIS/Documents/Codex/2026-04-26-build-the-first-version-of-a/mac/BridgeMac/Sources/BridgeMacApp/Services/MacInputInjectionService.swift): native macOS mouse and keyboard injection
-- [mac/BridgeMac/Sources/BridgeMacApp/Services/InputBridgeManager.swift](/C:/Users/CHRIS/Documents/Codex/2026-04-26-build-the-first-version-of-a/mac/BridgeMac/Sources/BridgeMacApp/Services/InputBridgeManager.swift): reverse Mac-to-Windows edge capture and escape flow
-- [docs/local-protocol.md](/C:/Users/CHRIS/Documents/Codex/2026-04-26-build-the-first-version-of-a/docs/local-protocol.md): endpoint and event reference
-- [docs/input-bridge.md](/C:/Users/CHRIS/Documents/Codex/2026-04-26-build-the-first-version-of-a/docs/input-bridge.md): input bridge behavior, safety, and permissions
+- `windows/BridgeWindowsHost/Program.cs`: HTTP and WebSocket routes
+- `windows/BridgeWindowsHost/Services/ControlMacInputBridgeService.cs`: Windows edge capture and Windows-to-Mac input forwarding
+- `windows/BridgeWindowsHost/Services/InputInjectionService.cs`: native Windows mouse and keyboard injection for the reverse path
+- `windows/BridgeWindowsHost/Services/SystemStatusService.cs`: Windows metrics collection
+- `windows/BridgeWindowsHost/Services/CommandRunnerService.cs`: preview + guarded command execution
+- `mac/BridgeMac/Sources/BridgeMacApp/ViewModels/BridgeViewModel.swift`: app state and sync logic for both input directions
+- `mac/BridgeMac/Sources/BridgeMacApp/Views/ContentView.swift`: SwiftUI dashboard and mode toggles
+- `mac/BridgeMac/Sources/BridgeMacApp/Services/ControlMacFromWindowsManager.swift`: Mac receiver/session manager for the Windows-primary path
+- `mac/BridgeMac/Sources/BridgeMacApp/Services/MacInputInjectionService.swift`: native macOS mouse and keyboard injection
+- `mac/BridgeMac/Sources/BridgeMacApp/Services/InputBridgeManager.swift`: reverse Mac-to-Windows edge capture and escape flow
+- `docs/local-protocol.md`: endpoint and event reference
+- `docs/input-bridge.md`: input bridge behavior, safety, and permissions
 
 ## Notes And Limitations
 

@@ -42,14 +42,12 @@ public sealed class InputInjectionService(ILogger<InputInjectionService> logger)
     private readonly object _gate = new();
     private readonly HashSet<ushort> _pressedKeys = [];
     private readonly HashSet<InputBridgeMouseButton> _pressedButtons = [];
-    private bool _sessionActive;
 
     public void BeginSession()
     {
         lock (_gate)
         {
             ReleaseAllStateUnsafe();
-            _sessionActive = true;
         }
     }
 
@@ -58,7 +56,6 @@ public sealed class InputInjectionService(ILogger<InputInjectionService> logger)
         lock (_gate)
         {
             ReleaseAllStateUnsafe();
-            _sessionActive = false;
         }
     }
 
@@ -66,8 +63,6 @@ public sealed class InputInjectionService(ILogger<InputInjectionService> logger)
     {
         lock (_gate)
         {
-            _sessionActive = true;
-
             switch (inputEvent.Kind)
             {
                 case InputBridgeEventKind.MouseMove:

@@ -170,13 +170,13 @@ struct ContentView: View {
                         .foregroundStyle(.secondary)
 
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 12)], spacing: 12) {
-                        MetricTile(title: "CPU", value: "\(status.cpuLoadPercent, specifier: "%.1f")%", detail: "Processor load")
-                        MetricTile(title: "RAM", value: "\(status.memoryUsedGb, specifier: "%.1f") / \(status.memoryTotalGb, specifier: "%.1f") GB", detail: "\(status.memoryUsagePercent, specifier: "%.0f")% in use")
-                        MetricTile(title: "Disk", value: "\(status.diskUsedGb, specifier: "%.1f") / \(status.diskTotalGb, specifier: "%.1f") GB", detail: "\(status.diskFreeGb, specifier: "%.1f") GB free")
+                        MetricTile(title: "CPU", value: "\(FormatterBridge.oneDecimal(status.cpuLoadPercent))%", detail: "Processor load")
+                        MetricTile(title: "RAM", value: "\(FormatterBridge.oneDecimal(status.memoryUsedGb)) / \(FormatterBridge.oneDecimal(status.memoryTotalGb)) GB", detail: "\(FormatterBridge.zeroDecimal(status.memoryUsagePercent))% in use")
+                        MetricTile(title: "Disk", value: "\(FormatterBridge.oneDecimal(status.diskUsedGb)) / \(FormatterBridge.oneDecimal(status.diskTotalGb)) GB", detail: "\(FormatterBridge.oneDecimal(status.diskFreeGb)) GB free")
                         MetricTile(
                             title: "GPU",
                             value: status.gpu?.name ?? "Not available",
-                            detail: status.gpu?.memoryGb.map { "\($0, specifier: "%.1f") GB VRAM" } ?? "No GPU details reported"
+                            detail: status.gpu?.memoryGb.map { "\(FormatterBridge.oneDecimal($0)) GB VRAM" } ?? "No GPU details reported"
                         )
                     }
 
@@ -623,5 +623,13 @@ private enum FormatterBridge {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         return formatter.string(fromByteCount: bytes)
+    }
+
+    static func oneDecimal(_ value: Double) -> String {
+        String(format: "%.1f", value)
+    }
+
+    static func zeroDecimal(_ value: Double) -> String {
+        String(format: "%.0f", value)
     }
 }

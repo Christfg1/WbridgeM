@@ -1,10 +1,12 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using System.Threading.Channels;
 using BridgeWindowsHost.Models;
 
 namespace BridgeWindowsHost.Services;
 
+[SupportedOSPlatform("windows")]
 public sealed class ControlMacInputBridgeService
 {
     private const int WhKeyboardLl = 13;
