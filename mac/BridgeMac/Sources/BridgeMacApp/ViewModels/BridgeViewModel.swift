@@ -22,7 +22,24 @@ final class BridgeViewModel: ObservableObject {
     }
 
     @Published var settings: BridgeConnectionSettings {
-        didSet { settingsStore.save(settings) }
+        didSet {
+            settingsStore.save(settings)
+            if !isApplyingConnectionDraftToSettings {
+                syncConnectionDraftFields(from: settings)
+            }
+        }
+    }
+
+    @Published var hostField: String {
+        didSet { applyConnectionDraftChanges() }
+    }
+
+    @Published var portField: String {
+        didSet { applyConnectionDraftChanges() }
+    }
+
+    @Published var sharedSecretField: String {
+        didSet { applyConnectionDraftChanges() }
     }
 
     @Published var connectionState: ConnectionState = .disconnected
@@ -55,10 +72,15 @@ final class BridgeViewModel: ObservableObject {
     private var statusPollingTask: Task<Void, Never>?
     private var isApplyingRemoteClipboard = false
     private var lastRemoteClipboardText: String = ""
+    private var isSyncingConnectionDraftFields = false
+    private var isApplyingConnectionDraftToSettings = false
 
     init() {
         let savedSettings = settingsStore.load()
         settings = savedSettings
+        hostField = savedSettings.host
+        portField = String(savedSettings.port)
+        sharedSecretField = savedSettings.sharedSecret
         localClipboardText = clipboardMonitor.currentText()
 
         clipboardMonitor.start { [weak self] text in
@@ -106,6 +128,7 @@ final class BridgeViewModel: ObservableObject {
 
     var canConnect: Bool {
         !settings.host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && Self.parsePort(portField) != nil
             && !settings.sharedSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
@@ -148,8 +171,18 @@ final class BridgeViewModel: ObservableObject {
     }
 
     func connect() async {
-        guard canConnect else {
-            errorMessage = "Enter the Windows host and shared secret before connecting."
+        guard !hostField.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            errorMessage = "Enter the Windows host before connecting."
+            return
+        }
+
+        guard Self.parsePort(portField) != nil else {
+            errorMessage = "Enter a valid bridge port between 1 and 65535 before connecting."
+            return
+        }
+
+        guard !sharedSecretField.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            errorMessage = "Enter the shared secret before connecting."
             return
         }
 
@@ -384,6 +417,50 @@ final class BridgeViewModel: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func applyConnectionDraftChanges() {
+        guard !isSyncingConnectionDraftFields else { return }
+
+        var updatedSettings = settings
+        updatedSettings.host = hostField
+        updatedSettings.sharedSecret = sharedSecretField
+
+        if let parsedPort = Self.parsePort(portField) {
+            updatedSettings.port = parsedPort
+        }
+
+        isApplyingConnectionDraftToSettings = true
+        settings = updatedSettings
+        isApplyingConnectionDraftToSettings = false
+    }
+
+    private func syncConnectionDraftFields(from settings: BridgeConnectionSettings) {
+        guard !isSyncingConnectionDraftFields else { return }
+
+        isSyncingConnectionDraftFields = true
+        defer { isSyncingConnectionDraftFields = false }
+
+        if hostField != settings.host {
+            hostField = settings.host
+        }
+
+        let normalizedPortField = String(settings.port)
+        if portField != normalizedPortField {
+            portField = normalizedPortField
+        }
+
+        if sharedSecretField != settings.sharedSecret {
+            sharedSecretField = settings.sharedSecret
+        }
+    }
+
+    private static func parsePort(_ value: String) -> Int? {
+        guard let port = Int(value), (1...65535).contains(port) else {
+            return nil
+        }
+
+        return port
     }
 
     private func startStatusPolling() {

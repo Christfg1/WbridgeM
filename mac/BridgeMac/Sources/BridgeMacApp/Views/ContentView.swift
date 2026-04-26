@@ -91,21 +91,18 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(spacing: 12) {
                     LabeledField(title: "Windows Host") {
-                        TextField("192.168.1.42", text: $viewModel.settings.host)
+                        TextField(BridgeConnectionSettings.defaultHost, text: $viewModel.hostField)
                             .textFieldStyle(.roundedBorder)
                     }
 
                     LabeledField(title: "Port") {
-                        TextField("5055", text: Binding(
-                            get: { String(viewModel.settings.port) },
-                            set: { viewModel.settings.port = Int($0) ?? 5055 }
-                        ))
+                        TextField(String(BridgeConnectionSettings.defaultPort), text: $viewModel.portField)
                         .frame(width: 90)
                         .textFieldStyle(.roundedBorder)
                     }
 
                     LabeledField(title: "Shared Secret") {
-                        SecureField("change-this-secret", text: $viewModel.settings.sharedSecret)
+                        TextField(BridgeConnectionSettings.defaultSharedSecret, text: $viewModel.sharedSecretField)
                             .textFieldStyle(.roundedBorder)
                     }
                 }

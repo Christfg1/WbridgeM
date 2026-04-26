@@ -1,9 +1,13 @@
 import Foundation
 
 struct BridgeConnectionSettings: Codable {
-    var host: String = ""
-    var port: Int = 5055
-    var sharedSecret: String = ""
+    static let defaultHost = "192.168.137.1"
+    static let defaultPort = 5055
+    static let defaultSharedSecret = "change-this-secret"
+
+    var host: String = Self.defaultHost
+    var port: Int = Self.defaultPort
+    var sharedSecret: String = Self.defaultSharedSecret
     var autoSyncClipboard: Bool = true
 }
 
