@@ -2,6 +2,7 @@ import Foundation
 
 final class WebSocketService {
     private let session = URLSession(configuration: .default)
+    private let sendQueue = DispatchQueue(label: "BridgeMac.WebSocketService.SendQueue")
     private var task: URLSessionWebSocketTask?
     private var receiveLoop: Task<Void, Never>?
     private var onEvent: ((Data) -> Void)?
@@ -9,8 +10,9 @@ final class WebSocketService {
 
     func connect(
         settings: BridgeConnectionSettings,
-        onEvent: @escaping (Data) -> Void,
-        onDisconnect: @escaping (String?) -> Void
+        path: String = "/ws",
+        onEvent: @escaping (Data) -> Void = { _ in },
+        onDisconnect: @escaping (String?) -> Void = { _ in }
     ) throws {
         disconnect()
 
@@ -18,7 +20,7 @@ final class WebSocketService {
         components.scheme = "ws"
         components.host = settings.host.trimmingCharacters(in: .whitespacesAndNewlines)
         components.port = settings.port
-        components.path = "/ws"
+        components.path = path
 
         guard let url = components.url else {
             throw BridgeClientError.invalidConfiguration("The WebSocket URL is not valid.")
@@ -39,12 +41,32 @@ final class WebSocketService {
         }
     }
 
+    func send(_ data: Data) async throws {
+        guard let task else {
+            throw BridgeClientError.notConnected("The WebSocket is not connected.")
+        }
+
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            sendQueue.async {
+                task.send(.data(data)) { error in
+                    if let error {
+                        continuation.resume(throwing: error)
+                    } else {
+                        continuation.resume()
+                    }
+                }
+            }
+        }
+    }
+
     func disconnect() {
         receiveLoop?.cancel()
         receiveLoop = nil
 
         task?.cancel(with: .normalClosure, reason: nil)
         task = nil
+        onEvent = nil
+        onDisconnect = nil
     }
 
     private func receiveMessages() async {

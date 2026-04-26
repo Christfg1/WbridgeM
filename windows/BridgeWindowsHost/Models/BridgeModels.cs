@@ -103,3 +103,36 @@ public sealed record RunCommandResponse
     public string StandardError { get; init; } = string.Empty;
     public IReadOnlyList<string> Warnings { get; init; } = Array.Empty<string>();
 }
+
+public enum InputBridgeEventKind
+{
+    MouseMove,
+    MouseButton,
+    Scroll,
+    Key
+}
+
+public enum InputBridgeMouseButton
+{
+    Left,
+    Right,
+    Middle
+}
+
+public sealed record InputBridgeEventDto
+{
+    public InputBridgeEventKind Kind { get; init; }
+    public int DeltaX { get; init; }
+    public int DeltaY { get; init; }
+    public InputBridgeMouseButton? Button { get; init; }
+    public bool? IsDown { get; init; }
+    public int ScrollX { get; init; }
+    public int ScrollY { get; init; }
+    public ushort? WindowsVirtualKey { get; init; }
+}
+
+public sealed record InputBridgeSocketMessage
+{
+    public string Type { get; init; } = string.Empty;
+    public InputBridgeEventDto? Payload { get; init; }
+}

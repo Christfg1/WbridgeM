@@ -143,6 +143,8 @@ final class BridgeAPIClient {
 enum BridgeClientError: LocalizedError {
     case invalidConfiguration(String)
     case invalidResponse
+    case notConnected(String)
+    case permissionRequired(String)
     case server(message: String)
 
     var errorDescription: String? {
@@ -151,6 +153,10 @@ enum BridgeClientError: LocalizedError {
             return message
         case .invalidResponse:
             return "The Windows bridge returned an invalid response."
+        case let .notConnected(message):
+            return message
+        case let .permissionRequired(message):
+            return message
         case let .server(message):
             return message
         }

@@ -5,6 +5,7 @@ struct ContentView: View {
     @StateObject private var viewModel = BridgeViewModel()
     @State private var showingFileImporter = false
     @State private var showingCommandConfirmation = false
+    @State private var showingInputBridgeConsent = false
 
     var body: some View {
         ScrollView {
@@ -12,6 +13,7 @@ struct ContentView: View {
                 header
                 connectionSection
                 statusSection
+                inputBridgeSection
                 clipboardSection
                 filesSection
                 commandSection
@@ -38,6 +40,15 @@ struct ContentView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(viewModel.errorMessage ?? "")
+        }
+        .confirmationDialog("Enable Input Bridge Mode?", isPresented: $showingInputBridgeConsent, titleVisibility: .visible) {
+            Button("Enable Input Bridge Mode") {
+                viewModel.confirmEnableInputBridge()
+            }
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This captures global mouse and keyboard events on the Mac, starts forwarding them directly to your Windows machine when the cursor reaches the right edge, and reserves Ctrl + Option + Command + Esc to return control to the Mac. macOS Accessibility permission is required.")
         }
         .confirmationDialog("Run this command on the Windows PC?", isPresented: $showingCommandConfirmation, titleVisibility: .visible) {
             Button("Run Command", role: .destructive) {
@@ -194,6 +205,50 @@ struct ContentView: View {
                     .buttonStyle(.bordered)
                     .disabled(viewModel.connectionState != .connected)
                 }
+            }
+        }
+    }
+
+    private var inputBridgeSection: some View {
+        SectionCard(title: "Input Bridge") {
+            VStack(alignment: .leading, spacing: 12) {
+                Toggle("Input Bridge Mode", isOn: Binding(
+                    get: { viewModel.isInputBridgeModeEnabled },
+                    set: { newValue in
+                        if newValue {
+                            showingInputBridgeConsent = true
+                        } else {
+                            viewModel.disableInputBridge()
+                        }
+                    }
+                ))
+                .disabled(viewModel.connectionState != .connected && !viewModel.isInputBridgeModeEnabled)
+
+                HStack(spacing: 12) {
+                    inputBridgeBadge
+
+                    if viewModel.inputBridgePhase == .active {
+                        Button("Return Control to Mac") {
+                            viewModel.returnInputBridgeControlToMac()
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+
+                Text(viewModel.inputBridgeStatusSummary)
+                    .foregroundStyle(.secondary)
+
+                Text("Activation: when the mode is armed, move the Mac cursor to the right edge of the current screen to start controlling Windows.")
+                    .foregroundStyle(.secondary)
+
+                Text("Escape hotkey: Ctrl + Option + Command + Esc")
+                    .font(.system(.body, design: .monospaced))
+
+                Text("Safety notes: this first version stays local-only, injects events with native Windows APIs, and focuses on mouse plus common keyboard forwarding. Some less common keys may not map perfectly yet.")
+                    .foregroundStyle(.secondary)
+
+                Text("Accessibility: macOS will ask for Accessibility permission before this can capture global input events.")
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -365,6 +420,26 @@ struct ContentView: View {
             .padding(.vertical, 6)
             .background(viewModel.connectionState == .connected ? Color.green.opacity(0.2) : Color.orange.opacity(0.18))
             .clipShape(Capsule())
+    }
+
+    private var inputBridgeBadge: some View {
+        Text(viewModel.inputBridgePhase.label)
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(inputBridgeBadgeColor.opacity(0.2))
+            .clipShape(Capsule())
+    }
+
+    private var inputBridgeBadgeColor: Color {
+        switch viewModel.inputBridgePhase {
+        case .off:
+            return .orange
+        case .armed:
+            return .blue
+        case .active:
+            return .green
+        }
     }
 }
 

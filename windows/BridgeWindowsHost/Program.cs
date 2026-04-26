@@ -21,6 +21,8 @@ builder.Services.AddSingleton<ClipboardService>();
 builder.Services.AddSingleton<FileTransferService>();
 builder.Services.AddSingleton<CommandRunnerService>();
 builder.Services.AddSingleton<BridgeEventHub>();
+builder.Services.AddSingleton<InputInjectionService>();
+builder.Services.AddSingleton<InputBridgeSocketService>();
 builder.Services.AddSingleton<SystemStatusService>();
 builder.Services.AddSingleton<LocalNetworkService>();
 builder.Services.AddHostedService<BridgeBackgroundPublisher>();
@@ -133,6 +135,27 @@ api.MapPost("/commands/run", async (RunCommandRequest request, CommandRunnerServ
     {
         return Results.StatusCode(StatusCodes.Status504GatewayTimeout);
     }
+});
+
+// Input Bridge uses a separate local WebSocket so pointer and keyboard traffic does not mix with status events.
+app.Map("/ws/input", async (HttpContext context, BridgeSecretAuthorizer authorizer, InputBridgeSocketService inputBridgeSocketService) =>
+{
+    if (!context.WebSockets.IsWebSocketRequest)
+    {
+        context.Response.StatusCode = StatusCodes.Status400BadRequest;
+        await context.Response.WriteAsJsonAsync(new { error = "Expected a WebSocket upgrade request." });
+        return;
+    }
+
+    if (!authorizer.IsAuthorized(context))
+    {
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        await context.Response.WriteAsJsonAsync(new { error = "Missing or invalid bridge secret." });
+        return;
+    }
+
+    using var webSocket = await context.WebSockets.AcceptWebSocketAsync();
+    await inputBridgeSocketService.HandleClientAsync(webSocket, context.RequestAborted);
 });
 
 // The WebSocket is used for live status and clipboard events so the Mac app does not need to poll aggressively.

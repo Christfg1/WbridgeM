@@ -35,6 +35,8 @@ final class BridgeViewModel: ObservableObject {
     @Published var commandShell: CommandShell = .powerShell
     @Published var commandPreview: CommandPreviewResponse?
     @Published var commandResult: RunCommandResponse?
+    @Published var inputBridgePhase: InputBridgePhase = .off
+    @Published var isInputBridgeModeEnabled = false
     @Published var errorMessage: String?
     @Published var activityLog: [String] = []
     @Published var isRunningCommand = false
@@ -44,6 +46,7 @@ final class BridgeViewModel: ObservableObject {
     private let webSocketService = WebSocketService()
     private let clipboardMonitor = ClipboardMonitor()
     private let settingsStore = SettingsStore()
+    private let inputBridgeManager = InputBridgeManager()
     private var statusPollingTask: Task<Void, Never>?
     private var isApplyingRemoteClipboard = false
     private var lastRemoteClipboardText: String = ""
@@ -56,6 +59,24 @@ final class BridgeViewModel: ObservableObject {
         clipboardMonitor.start { [weak self] text in
             Task { @MainActor [weak self] in
                 await self?.handleLocalClipboardChange(text)
+            }
+        }
+
+        inputBridgeManager.onPhaseChange = { [weak self] phase in
+            Task { @MainActor [weak self] in
+                self?.handleInputBridgePhaseChange(phase)
+            }
+        }
+
+        inputBridgeManager.onLog = { [weak self] message in
+            Task { @MainActor [weak self] in
+                self?.appendLog(message)
+            }
+        }
+
+        inputBridgeManager.onError = { [weak self] message in
+            Task { @MainActor [weak self] in
+                self?.errorMessage = message
             }
         }
     }
@@ -79,6 +100,17 @@ final class BridgeViewModel: ObservableObject {
         }
 
         return commandPreview.warnings.joined(separator: "\n")
+    }
+
+    var inputBridgeStatusSummary: String {
+        switch inputBridgePhase {
+        case .off:
+            return "Off. Input stays on the Mac."
+        case .armed:
+            return "Armed. Move the Mac cursor to the right edge to begin controlling Windows."
+        case .active:
+            return "Active. Mouse, scroll, and common keyboard keys are being forwarded to Windows."
+        }
     }
 
     func connect() async {
@@ -128,6 +160,10 @@ final class BridgeViewModel: ObservableObject {
     }
 
     func disconnect() {
+        if isInputBridgeModeEnabled {
+            disableInputBridge(reason: "Input Bridge was turned off because the bridge disconnected.")
+        }
+
         statusPollingTask?.cancel()
         statusPollingTask = nil
         webSocketService.disconnect()
@@ -254,6 +290,34 @@ final class BridgeViewModel: ObservableObject {
         }
     }
 
+    func confirmEnableInputBridge() {
+        guard connectionState == .connected else {
+            errorMessage = "Connect to the Windows bridge before enabling Input Bridge Mode."
+            isInputBridgeModeEnabled = false
+            return
+        }
+
+        do {
+            try inputBridgeManager.enable(settings: settings)
+            isInputBridgeModeEnabled = true
+            inputBridgePhase = inputBridgeManager.currentPhase
+        } catch {
+            isInputBridgeModeEnabled = false
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func disableInputBridge(reason: String = "Input Bridge mode turned off.") {
+        inputBridgeManager.disable(reason: reason)
+        isInputBridgeModeEnabled = false
+        inputBridgePhase = .off
+    }
+
+    func returnInputBridgeControlToMac() {
+        guard inputBridgePhase == .active else { return }
+        inputBridgeManager.exitToMac(reason: "Returned control to the Mac from the Input Bridge controls.")
+    }
+
     private func startStatusPolling() {
         statusPollingTask?.cancel()
         statusPollingTask = Task { [weak self] in
@@ -332,11 +396,20 @@ final class BridgeViewModel: ObservableObject {
 
     private func handleSocketDisconnect(_ message: String?) {
         if connectionState == .connected {
+            if isInputBridgeModeEnabled {
+                disableInputBridge(reason: "Input Bridge was turned off because the main bridge socket disconnected.")
+            }
+
             statusPollingTask?.cancel()
             statusPollingTask = nil
             connectionState = .disconnected
             appendLog("WebSocket disconnected\(message.map { ": \($0)" } ?? "")")
         }
+    }
+
+    private func handleInputBridgePhaseChange(_ phase: InputBridgePhase) {
+        inputBridgePhase = phase
+        isInputBridgeModeEnabled = phase != .off
     }
 
     private func appendLog(_ message: String) {

@@ -7,6 +7,23 @@ struct BridgeConnectionSettings: Codable {
     var autoSyncClipboard: Bool = true
 }
 
+enum InputBridgePhase: String {
+    case off
+    case armed
+    case active
+
+    var label: String {
+        switch self {
+        case .off:
+            return "Off"
+        case .armed:
+            return "Armed"
+        case .active:
+            return "Active"
+        }
+    }
+}
+
 struct BridgeState: Decodable {
     let hostName: String
     let appVersion: String
@@ -128,4 +145,53 @@ struct BridgeEventEnvelope<Payload: Decodable>: Decodable {
 
 struct RemoteErrorResponse: Decodable {
     let error: String
+}
+
+enum InputBridgeEventKind: String, Codable {
+    case mouseMove = "MouseMove"
+    case mouseButton = "MouseButton"
+    case scroll = "Scroll"
+    case key = "Key"
+}
+
+enum InputBridgeMouseButton: String, Codable {
+    case left = "Left"
+    case right = "Right"
+    case middle = "Middle"
+}
+
+struct InputBridgeEvent: Encodable {
+    let kind: InputBridgeEventKind
+    let deltaX: Int
+    let deltaY: Int
+    let button: InputBridgeMouseButton?
+    let isDown: Bool?
+    let scrollX: Int
+    let scrollY: Int
+    let windowsVirtualKey: UInt16?
+
+    init(
+        kind: InputBridgeEventKind,
+        deltaX: Int = 0,
+        deltaY: Int = 0,
+        button: InputBridgeMouseButton? = nil,
+        isDown: Bool? = nil,
+        scrollX: Int = 0,
+        scrollY: Int = 0,
+        windowsVirtualKey: UInt16? = nil
+    ) {
+        self.kind = kind
+        self.deltaX = deltaX
+        self.deltaY = deltaY
+        self.button = button
+        self.isDown = isDown
+        self.scrollX = scrollX
+        self.scrollY = scrollY
+        self.windowsVirtualKey = windowsVirtualKey
+    }
+}
+
+struct InputBridgeSocketMessage: Encodable {
+    let type: String
+    let payload: InputBridgeEvent?
 }
