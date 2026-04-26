@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace BridgeWindowsHost.Services;
 
@@ -9,10 +10,13 @@ public sealed class BridgeEventHub
 {
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web)
     {
+        Converters = { new JsonStringEnumConverter() },
         WriteIndented = false
     };
 
     private readonly ConcurrentDictionary<Guid, SocketConnection> _connections = new();
+
+    public bool HasConnections => !_connections.IsEmpty;
 
     public async Task HandleClientAsync(WebSocket socket, CancellationToken cancellationToken)
     {

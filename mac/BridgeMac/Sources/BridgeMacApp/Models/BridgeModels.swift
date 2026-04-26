@@ -7,10 +7,10 @@ struct BridgeConnectionSettings: Codable {
     var autoSyncClipboard: Bool = true
 }
 
-enum InputBridgePhase: String {
-    case off
-    case armed
-    case active
+enum InputBridgePhase: String, Codable {
+    case off = "Off"
+    case armed = "Armed"
+    case active = "Active"
 
     var label: String {
         switch self {
@@ -147,6 +147,18 @@ struct RemoteErrorResponse: Decodable {
     let error: String
 }
 
+struct ControlMacFromWindowsRequest: Encodable {
+    let enabled: Bool
+}
+
+struct ControlMacFromWindowsState: Decodable {
+    let enabled: Bool
+    let phase: InputBridgePhase
+    let activationEdge: String
+    let escapeHotkey: String
+    let requiresMacAccessibilityPermission: Bool
+}
+
 enum InputBridgeEventKind: String, Codable {
     case mouseMove = "MouseMove"
     case mouseButton = "MouseButton"
@@ -160,7 +172,7 @@ enum InputBridgeMouseButton: String, Codable {
     case middle = "Middle"
 }
 
-struct InputBridgeEvent: Encodable {
+struct InputBridgeEvent: Codable {
     let kind: InputBridgeEventKind
     let deltaX: Int
     let deltaY: Int

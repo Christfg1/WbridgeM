@@ -136,3 +136,24 @@ public sealed record InputBridgeSocketMessage
     public string Type { get; init; } = string.Empty;
     public InputBridgeEventDto? Payload { get; init; }
 }
+
+public enum ControlMacBridgePhase
+{
+    Off,
+    Armed,
+    Active
+}
+
+public sealed record ControlMacFromWindowsRequest
+{
+    public bool Enabled { get; init; }
+}
+
+public sealed record ControlMacFromWindowsStateDto
+{
+    public bool Enabled { get; init; }
+    public ControlMacBridgePhase Phase { get; init; }
+    public string ActivationEdge { get; init; } = "Right";
+    public string EscapeHotkey { get; init; } = "Ctrl + Alt + Windows + Esc";
+    public bool RequiresMacAccessibilityPermission { get; init; } = true;
+}

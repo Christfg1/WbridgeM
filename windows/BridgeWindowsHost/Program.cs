@@ -23,9 +23,11 @@ builder.Services.AddSingleton<CommandRunnerService>();
 builder.Services.AddSingleton<BridgeEventHub>();
 builder.Services.AddSingleton<InputInjectionService>();
 builder.Services.AddSingleton<InputBridgeSocketService>();
+builder.Services.AddSingleton<ControlMacInputBridgeService>();
 builder.Services.AddSingleton<SystemStatusService>();
 builder.Services.AddSingleton<LocalNetworkService>();
 builder.Services.AddHostedService<BridgeBackgroundPublisher>();
+builder.Services.AddHostedService<ControlMacInputBridgeHostedService>();
 
 var app = builder.Build();
 
@@ -135,6 +137,17 @@ api.MapPost("/commands/run", async (RunCommandRequest request, CommandRunnerServ
     {
         return Results.StatusCode(StatusCodes.Status504GatewayTimeout);
     }
+});
+
+api.MapGet("/input/control-mac", (ControlMacInputBridgeService controlMacInputBridgeService) =>
+{
+    return Results.Ok(controlMacInputBridgeService.GetState());
+});
+
+api.MapPost("/input/control-mac", (ControlMacFromWindowsRequest request, ControlMacInputBridgeService controlMacInputBridgeService) =>
+{
+    var state = controlMacInputBridgeService.SetEnabled(request.Enabled);
+    return Results.Ok(state);
 });
 
 // Input Bridge uses a separate local WebSocket so pointer and keyboard traffic does not mix with status events.

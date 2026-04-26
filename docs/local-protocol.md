@@ -5,8 +5,8 @@ This project uses a simple local API plus two WebSocket streams.
 ## Transport
 
 - Base URL: `http://<windows-ip>:5055`
-- WebSocket URL: `ws://<windows-ip>:5055/ws`
-- Input Bridge WebSocket URL: `ws://<windows-ip>:5055/ws/input`
+- Main WebSocket URL: `ws://<windows-ip>:5055/ws`
+- Reverse input WebSocket URL: `ws://<windows-ip>:5055/ws/input`
 - Auth header: `X-Bridge-Secret: <shared secret>`
 
 ## HTTP Endpoints
@@ -101,7 +101,47 @@ Request:
 }
 ```
 
-## WebSocket Events
+### `GET /api/input/control-mac`
+
+Returns the Windows-primary control state.
+
+Response:
+
+```json
+{
+  "enabled": true,
+  "phase": "Armed",
+  "activationEdge": "Right",
+  "escapeHotkey": "Ctrl + Alt + Windows + Esc",
+  "requiresMacAccessibilityPermission": true
+}
+```
+
+### `POST /api/input/control-mac`
+
+Enables or disables the Windows-to-Mac control mode.
+
+Request:
+
+```json
+{
+  "enabled": true
+}
+```
+
+## Main WebSocket Events
+
+The main `/ws` socket carries status, clipboard, command, and Windows-to-Mac input bridge events.
+
+Each main WebSocket message uses this envelope:
+
+```json
+{
+  "type": "status-updated",
+  "occurredAt": "2026-04-26T19:41:12.521Z",
+  "payload": {}
+}
+```
 
 ### `status-updated`
 
@@ -115,9 +155,59 @@ Sent when the Windows clipboard changes locally or through the API.
 
 Sent after a command run finishes.
 
-## Input Bridge WebSocket
+### `control-mac-state`
 
-`/ws/input` is dedicated to Input Bridge traffic so mouse and keyboard forwarding stays separate from status and clipboard updates.
+Sent when the Windows-primary control mode changes phase.
+
+Message shape:
+
+```json
+{
+  "type": "control-mac-state",
+  "occurredAt": "2026-04-26T19:41:12.521Z",
+  "payload": {
+    "enabled": true,
+    "phase": "Active",
+    "activationEdge": "Right",
+    "escapeHotkey": "Ctrl + Alt + Windows + Esc",
+    "requiresMacAccessibilityPermission": true
+  }
+}
+```
+
+### `control-mac-input`
+
+Sent while Windows is actively controlling the Mac.
+
+Message shape:
+
+```json
+{
+  "type": "control-mac-input",
+  "occurredAt": "2026-04-26T19:41:12.521Z",
+  "payload": {
+    "kind": "MouseMove",
+    "deltaX": 14,
+    "deltaY": -3,
+    "button": null,
+    "isDown": null,
+    "scrollX": 0,
+    "scrollY": 0,
+    "windowsVirtualKey": null
+  }
+}
+```
+
+Supported input kinds:
+
+- `MouseMove`
+- `MouseButton`
+- `Scroll`
+- `Key`
+
+## Reverse Input WebSocket
+
+`/ws/input` remains dedicated to the reverse Mac-to-Windows input path so that the older direct injection flow stays isolated from the main bridge socket.
 
 Message shape:
 
@@ -137,7 +227,7 @@ Message shape:
 }
 ```
 
-Supported event kinds:
+Supported input kinds:
 
 - `MouseMove`
 - `MouseButton`
@@ -148,7 +238,7 @@ Supported event kinds:
 
 The Windows host treats one folder as the transfer root:
 
-- default: `%USERPROFILE%\Documents\BridgeDrop`
+- default: `%USERPROFILE%\\Documents\\BridgeDrop`
 
 Uploads land there, and downloads are restricted to paths inside that root.
 
@@ -159,6 +249,7 @@ The v1 safety rules are intentionally lightweight:
 - command execution requires a `confirmed: true` request
 - the Mac UI always previews before running
 - the Windows host blocks a few known-destructive command tokens
-- Input Bridge requires explicit opt-in and macOS Accessibility permission on the Mac side
-- the Windows host releases held input state when the Input Bridge session ends
+- `Control Mac from Windows` requires explicit opt-in and macOS Accessibility permission on the Mac side
+- the reverse Mac-to-Windows input path also requires explicit opt-in and macOS Accessibility permission on the Mac side
+- both sides release held input state when their active control session ends
 - all traffic stays on the local network unless someone explicitly runs a networked shell command

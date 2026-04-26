@@ -35,6 +35,10 @@ final class BridgeViewModel: ObservableObject {
     @Published var commandShell: CommandShell = .powerShell
     @Published var commandPreview: CommandPreviewResponse?
     @Published var commandResult: RunCommandResponse?
+    @Published var controlMacFromWindowsPhase: InputBridgePhase = .off
+    @Published var isControlMacFromWindowsEnabled = false
+    @Published var controlMacActivationEdge = "Right"
+    @Published var controlMacEscapeHotkey = "Ctrl + Alt + Windows + Esc"
     @Published var inputBridgePhase: InputBridgePhase = .off
     @Published var isInputBridgeModeEnabled = false
     @Published var errorMessage: String?
@@ -46,6 +50,7 @@ final class BridgeViewModel: ObservableObject {
     private let webSocketService = WebSocketService()
     private let clipboardMonitor = ClipboardMonitor()
     private let settingsStore = SettingsStore()
+    private let controlMacFromWindowsManager = ControlMacFromWindowsManager()
     private let inputBridgeManager = InputBridgeManager()
     private var statusPollingTask: Task<Void, Never>?
     private var isApplyingRemoteClipboard = false
@@ -75,6 +80,24 @@ final class BridgeViewModel: ObservableObject {
         }
 
         inputBridgeManager.onError = { [weak self] message in
+            Task { @MainActor [weak self] in
+                self?.errorMessage = message
+            }
+        }
+
+        controlMacFromWindowsManager.onStateChange = { [weak self] state in
+            Task { @MainActor [weak self] in
+                self?.syncControlMacFromWindowsState(state)
+            }
+        }
+
+        controlMacFromWindowsManager.onLog = { [weak self] message in
+            Task { @MainActor [weak self] in
+                self?.appendLog(message)
+            }
+        }
+
+        controlMacFromWindowsManager.onError = { [weak self] message in
             Task { @MainActor [weak self] in
                 self?.errorMessage = message
             }
@@ -113,6 +136,17 @@ final class BridgeViewModel: ObservableObject {
         }
     }
 
+    var controlMacFromWindowsSummary: String {
+        switch controlMacFromWindowsPhase {
+        case .off:
+            return "Off. Windows will not capture and forward input to the Mac."
+        case .armed:
+            return "Armed. When Windows reaches the right screen edge, it can begin controlling the Mac."
+        case .active:
+            return "Active. Windows is currently driving the Mac with remote mouse and keyboard input."
+        }
+    }
+
     func connect() async {
         guard canConnect else {
             errorMessage = "Enter the Windows host and shared secret before connecting."
@@ -128,11 +162,13 @@ final class BridgeViewModel: ObservableObject {
             async let statusRequest = apiClient.fetchStatus(settings: settings)
             async let clipboardRequest = apiClient.fetchClipboard(settings: settings)
             async let fileRequest = apiClient.listFiles(settings: settings)
+            async let controlMacStateRequest = controlMacFromWindowsManager.refresh(settings: settings)
 
             status = try await statusRequest
             let clipboard = try await clipboardRequest
             let fileList = try await fileRequest
             remoteFiles = fileList.entries
+            try await controlMacStateRequest
 
             applyRemoteClipboard(clipboard, mirrorToMac: settings.autoSyncClipboard)
             try webSocketService.connect(
@@ -160,6 +196,10 @@ final class BridgeViewModel: ObservableObject {
     }
 
     func disconnect() {
+        if isControlMacFromWindowsEnabled {
+            controlMacFromWindowsManager.reset(reason: "Control Mac from Windows turned off because the bridge disconnected.")
+        }
+
         if isInputBridgeModeEnabled {
             disableInputBridge(reason: "Input Bridge was turned off because the bridge disconnected.")
         }
@@ -318,6 +358,34 @@ final class BridgeViewModel: ObservableObject {
         inputBridgeManager.exitToMac(reason: "Returned control to the Mac from the Input Bridge controls.")
     }
 
+    func enableControlMacFromWindows() async {
+        guard connectionState == .connected else {
+            errorMessage = "Connect to the Windows bridge before enabling Control Mac from Windows."
+            isControlMacFromWindowsEnabled = false
+            return
+        }
+
+        do {
+            try await controlMacFromWindowsManager.enable(settings: settings)
+        } catch {
+            isControlMacFromWindowsEnabled = false
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func disableControlMacFromWindows() async {
+        guard connectionState == .connected else {
+            controlMacFromWindowsManager.reset(reason: "Control Mac from Windows turned off.")
+            return
+        }
+
+        do {
+            try await controlMacFromWindowsManager.disable(settings: settings)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     private func startStatusPolling() {
         statusPollingTask?.cancel()
         statusPollingTask = Task { [weak self] in
@@ -386,6 +454,12 @@ final class BridgeViewModel: ObservableObject {
                 let event = try BridgeJSONCoding.decoder.decode(BridgeEventEnvelope<RunCommandResponse>.self, from: data)
                 commandResult = event.payload
                 appendLog("Received a command completion update")
+            case "control-mac-state":
+                let event = try BridgeJSONCoding.decoder.decode(BridgeEventEnvelope<ControlMacFromWindowsState>.self, from: data)
+                controlMacFromWindowsManager.applyRemoteState(event.payload)
+            case "control-mac-input":
+                let event = try BridgeJSONCoding.decoder.decode(BridgeEventEnvelope<InputBridgeEvent>.self, from: data)
+                controlMacFromWindowsManager.handleRemoteInput(event.payload)
             default:
                 appendLog("Received bridge event: \(probe.type)")
             }
@@ -396,6 +470,10 @@ final class BridgeViewModel: ObservableObject {
 
     private func handleSocketDisconnect(_ message: String?) {
         if connectionState == .connected {
+            if isControlMacFromWindowsEnabled {
+                controlMacFromWindowsManager.reset(reason: "Control Mac from Windows turned off because the main bridge socket disconnected.")
+            }
+
             if isInputBridgeModeEnabled {
                 disableInputBridge(reason: "Input Bridge was turned off because the main bridge socket disconnected.")
             }
@@ -410,6 +488,13 @@ final class BridgeViewModel: ObservableObject {
     private func handleInputBridgePhaseChange(_ phase: InputBridgePhase) {
         inputBridgePhase = phase
         isInputBridgeModeEnabled = phase != .off
+    }
+
+    private func syncControlMacFromWindowsState(_ state: ControlMacFromWindowsState) {
+        isControlMacFromWindowsEnabled = state.enabled
+        controlMacFromWindowsPhase = state.phase
+        controlMacActivationEdge = state.activationEdge
+        controlMacEscapeHotkey = state.escapeHotkey
     }
 
     private func appendLog(_ message: String) {

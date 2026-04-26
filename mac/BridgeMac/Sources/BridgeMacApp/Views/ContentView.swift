@@ -5,6 +5,7 @@ struct ContentView: View {
     @StateObject private var viewModel = BridgeViewModel()
     @State private var showingFileImporter = false
     @State private var showingCommandConfirmation = false
+    @State private var showingControlMacConsent = false
     @State private var showingInputBridgeConsent = false
 
     var body: some View {
@@ -13,6 +14,7 @@ struct ContentView: View {
                 header
                 connectionSection
                 statusSection
+                controlMacFromWindowsSection
                 inputBridgeSection
                 clipboardSection
                 filesSection
@@ -40,6 +42,17 @@ struct ContentView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(viewModel.errorMessage ?? "")
+        }
+        .confirmationDialog("Enable Control Mac from Windows?", isPresented: $showingControlMacConsent, titleVisibility: .visible) {
+            Button("Enable Control Mac from Windows") {
+                Task {
+                    await viewModel.enableControlMacFromWindows()
+                }
+            }
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This makes Windows the primary controller. When the Windows cursor reaches the configured screen edge, Windows will capture mouse and keyboard input, send it directly over the local bridge, and the Mac will inject it using macOS Accessibility APIs.")
         }
         .confirmationDialog("Enable Input Bridge Mode?", isPresented: $showingInputBridgeConsent, titleVisibility: .visible) {
             Button("Enable Input Bridge Mode") {
@@ -209,8 +222,50 @@ struct ContentView: View {
         }
     }
 
+    private var controlMacFromWindowsSection: some View {
+        SectionCard(title: "Control Mac from Windows") {
+            VStack(alignment: .leading, spacing: 12) {
+                Toggle("Control Mac from Windows", isOn: Binding(
+                    get: { viewModel.isControlMacFromWindowsEnabled },
+                    set: { newValue in
+                        if newValue {
+                            showingControlMacConsent = true
+                        } else {
+                            Task {
+                                await viewModel.disableControlMacFromWindows()
+                            }
+                        }
+                    }
+                ))
+                .disabled(viewModel.connectionState != .connected && !viewModel.isControlMacFromWindowsEnabled)
+
+                HStack(spacing: 12) {
+                    controlMacBadge
+                    Text("Primary/default direction")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+
+                Text(viewModel.controlMacFromWindowsSummary)
+                    .foregroundStyle(.secondary)
+
+                Text("Activation edge on Windows: \(viewModel.controlMacActivationEdge)")
+                    .foregroundStyle(.secondary)
+
+                Text("Escape hotkey on Windows: \(viewModel.controlMacEscapeHotkey)")
+                    .font(.system(.body, design: .monospaced))
+
+                Text("Safety notes: this mode stays local-only, rides the existing main bridge connection, and keeps the older Mac-to-Windows path as an optional reverse mode.")
+                    .foregroundStyle(.secondary)
+
+                Text("Accessibility: macOS needs Accessibility permission so the Mac can inject mouse and keyboard input received from Windows.")
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
     private var inputBridgeSection: some View {
-        SectionCard(title: "Input Bridge") {
+        SectionCard(title: "Control Windows from Mac") {
             VStack(alignment: .leading, spacing: 12) {
                 Toggle("Input Bridge Mode", isOn: Binding(
                     get: { viewModel.isInputBridgeModeEnabled },
@@ -238,7 +293,7 @@ struct ContentView: View {
                 Text(viewModel.inputBridgeStatusSummary)
                     .foregroundStyle(.secondary)
 
-                Text("Activation: when the mode is armed, move the Mac cursor to the right edge of the current screen to start controlling Windows.")
+                Text("Reverse direction: when armed, move the Mac cursor to the right edge of the current screen to start controlling Windows.")
                     .foregroundStyle(.secondary)
 
                 Text("Escape hotkey: Ctrl + Option + Command + Esc")
@@ -420,6 +475,26 @@ struct ContentView: View {
             .padding(.vertical, 6)
             .background(viewModel.connectionState == .connected ? Color.green.opacity(0.2) : Color.orange.opacity(0.18))
             .clipShape(Capsule())
+    }
+
+    private var controlMacBadge: some View {
+        Text(viewModel.controlMacFromWindowsPhase.label)
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(controlMacBadgeColor.opacity(0.2))
+            .clipShape(Capsule())
+    }
+
+    private var controlMacBadgeColor: Color {
+        switch viewModel.controlMacFromWindowsPhase {
+        case .off:
+            return .orange
+        case .armed:
+            return .blue
+        case .active:
+            return .green
+        }
     }
 
     private var inputBridgeBadge: some View {

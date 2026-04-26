@@ -8,7 +8,8 @@ Version 1 includes:
 - File transfer into and out of a Windows shared folder
 - Windows status dashboard for CPU, RAM, disk, and GPU details when available
 - Remote command runner with preview and confirmation
-- Input Bridge Mode for mouse, scroll, and common keyboard forwarding from Mac to Windows
+- `Control Mac from Windows` as the primary/default input bridge mode
+- `Control Windows from Mac` as an optional reverse input bridge mode
 - Local HTTP + WebSocket communication with a shared secret
 
 ## Project Structure
@@ -39,16 +40,22 @@ Version 1 includes:
 
 ## How It Works
 
-The Windows app hosts a small LAN-only API on port `5055` by default. The Mac SwiftUI app connects to that host over HTTP for request/response actions, opens a WebSocket for live status and clipboard events, and uses a second dedicated WebSocket for Input Bridge traffic when remote control is active.
+The Windows app hosts a small LAN-only API on port `5055` by default. The Mac SwiftUI app connects to that host over HTTP for request/response actions and opens the main WebSocket at `/ws` for live status, clipboard, and Windows-to-Mac control events.
 
-The first version keeps the trust model simple:
+There are now two input bridge directions:
+
+- Primary/default: Windows captures input at its screen edge and forwards it to the Mac over the existing main bridge WebSocket.
+- Reverse/optional: the Mac captures input at its screen edge and forwards it to Windows over the dedicated `/ws/input` socket.
+
+The trust model stays simple:
 
 - Both devices must be on the same local network.
 - The Mac user enters the Windows IP address manually.
 - Every API request includes `X-Bridge-Secret`.
 - Commands must be previewed and explicitly confirmed in the Mac UI.
 - The Windows host blocks a few destructive command tokens by default.
-- Input Bridge must be enabled explicitly in the Mac UI before it will capture any input.
+- Each input bridge direction must be enabled explicitly in the Mac UI.
+- No cloud relay, no paid APIs, and no internet service is required.
 
 ## Run The Windows Host
 
@@ -82,6 +89,8 @@ What the Windows app exposes:
 - `GET /api/files/download`
 - `POST /api/commands/preview`
 - `POST /api/commands/run`
+- `GET /api/input/control-mac`
+- `POST /api/input/control-mac`
 - `GET /api/health`
 - `GET /ws`
 - `GET /ws/input`
@@ -115,33 +124,51 @@ Inside the Mac app:
 2. Leave the default port `5055` unless you changed it on Windows.
 3. Enter the same shared secret from `appsettings.json`.
 4. Click `Connect`.
-5. If you want remote mouse and keyboard sharing, enable `Input Bridge Mode` and approve the permission prompt.
+5. Enable `Control Mac from Windows` if you want Windows to be the primary controller.
+6. Optionally enable `Input Bridge Mode` if you also want the reverse Mac-to-Windows path available.
 
-## Input Bridge Mode
+## Input Bridge Modes
 
-The Mac app acts as the controller. When `Input Bridge Mode` is enabled, the app arms itself and waits for the Mac cursor to touch the right edge of the current screen. At that point it starts forwarding input directly to Windows over the local bridge connection.
+### Primary: Control Mac from Windows
 
-Current behavior:
+This is the main/default desktop sharing path for the app.
 
-- forwards relative mouse movement
-- forwards left, right, and middle mouse clicks
-- forwards scroll events
-- forwards common keyboard keys and modifiers
-- reserves `Ctrl + Option + Command + Esc` as a local escape hotkey to return control to the Mac
-- injects events on Windows with the native `SendInput` API
+When `Control Mac from Windows` is enabled:
 
-The first version is intentionally conservative:
+- Windows stays local until its cursor reaches the right edge of the Windows desktop
+- Windows begins forwarding mouse movement, clicks, scroll, and common keyboard events to the Mac
+- the Mac injects those events with native macOS APIs
+- `Ctrl + Alt + Windows + Esc` returns control back to Windows
 
-- the transport is local-only and direct to the Windows host
-- the feature requires explicit opt-in inside the Mac UI
-- the Windows host tears down held keys and mouse buttons when the input session ends
-- some uncommon keys may not map perfectly yet
+This direction uses:
 
-### macOS Accessibility Permission
+- `GET/POST /api/input/control-mac` for enable/disable state
+- the existing `/ws` bridge socket for live `control-mac-state` and `control-mac-input` events
 
-Input capture on macOS requires Accessibility access. The app prompts for it the first time you enable `Input Bridge Mode`.
+### Reverse: Control Windows from Mac
 
-If macOS does not show the prompt, open:
+The older reverse direction is still included as an optional mode.
+
+When `Input Bridge Mode` is enabled:
+
+- the Mac waits for its cursor to reach the right edge of the current screen
+- the Mac forwards mouse movement, clicks, scroll, and common keyboard events to Windows
+- the Windows host injects those events with the native `SendInput` API
+- `Ctrl + Option + Command + Esc` returns control back to the Mac
+
+This direction uses:
+
+- the dedicated `/ws/input` socket
+- the existing `InputBridgeManager` and `InputInjectionService` path
+
+## macOS Accessibility Permission
+
+macOS Accessibility access is required for both input bridge directions:
+
+- `Control Mac from Windows` needs it so the Mac can inject remote mouse and keyboard events into macOS.
+- `Input Bridge Mode` needs it so the Mac can capture and suppress global input while controlling Windows.
+
+The app prompts for permission when needed. If macOS does not show the prompt, open:
 
 - `System Settings > Privacy & Security > Accessibility`
 
@@ -152,27 +179,31 @@ More detail is in [docs/input-bridge.md](/C:/Users/CHRIS/Documents/Codex/2026-04
 ## Main Files
 
 - [windows/BridgeWindowsHost/Program.cs](/C:/Users/CHRIS/Documents/Codex/2026-04-26-build-the-first-version-of-a/windows/BridgeWindowsHost/Program.cs): HTTP and WebSocket routes
+- [windows/BridgeWindowsHost/Services/ControlMacInputBridgeService.cs](/C:/Users/CHRIS/Documents/Codex/2026-04-26-build-the-first-version-of-a/windows/BridgeWindowsHost/Services/ControlMacInputBridgeService.cs): Windows edge capture and Windows-to-Mac input forwarding
+- [windows/BridgeWindowsHost/Services/InputInjectionService.cs](/C:/Users/CHRIS/Documents/Codex/2026-04-26-build-the-first-version-of-a/windows/BridgeWindowsHost/Services/InputInjectionService.cs): native Windows mouse and keyboard injection for the reverse path
 - [windows/BridgeWindowsHost/Services/SystemStatusService.cs](/C:/Users/CHRIS/Documents/Codex/2026-04-26-build-the-first-version-of-a/windows/BridgeWindowsHost/Services/SystemStatusService.cs): Windows metrics collection
 - [windows/BridgeWindowsHost/Services/CommandRunnerService.cs](/C:/Users/CHRIS/Documents/Codex/2026-04-26-build-the-first-version-of-a/windows/BridgeWindowsHost/Services/CommandRunnerService.cs): preview + guarded command execution
-- [windows/BridgeWindowsHost/Services/InputInjectionService.cs](/C:/Users/CHRIS/Documents/Codex/2026-04-26-build-the-first-version-of-a/windows/BridgeWindowsHost/Services/InputInjectionService.cs): native Windows mouse and keyboard injection
-- [mac/BridgeMac/Sources/BridgeMacApp/ViewModels/BridgeViewModel.swift](/C:/Users/CHRIS/Documents/Codex/2026-04-26-build-the-first-version-of-a/mac/BridgeMac/Sources/BridgeMacApp/ViewModels/BridgeViewModel.swift): app state and sync logic
-- [mac/BridgeMac/Sources/BridgeMacApp/Views/ContentView.swift](/C:/Users/CHRIS/Documents/Codex/2026-04-26-build-the-first-version-of-a/mac/BridgeMac/Sources/BridgeMacApp/Views/ContentView.swift): SwiftUI dashboard
-- [mac/BridgeMac/Sources/BridgeMacApp/Services/InputBridgeManager.swift](/C:/Users/CHRIS/Documents/Codex/2026-04-26-build-the-first-version-of-a/mac/BridgeMac/Sources/BridgeMacApp/Services/InputBridgeManager.swift): edge activation, capture, and escape flow
+- [mac/BridgeMac/Sources/BridgeMacApp/ViewModels/BridgeViewModel.swift](/C:/Users/CHRIS/Documents/Codex/2026-04-26-build-the-first-version-of-a/mac/BridgeMac/Sources/BridgeMacApp/ViewModels/BridgeViewModel.swift): app state and sync logic for both input directions
+- [mac/BridgeMac/Sources/BridgeMacApp/Views/ContentView.swift](/C:/Users/CHRIS/Documents/Codex/2026-04-26-build-the-first-version-of-a/mac/BridgeMac/Sources/BridgeMacApp/Views/ContentView.swift): SwiftUI dashboard and mode toggles
+- [mac/BridgeMac/Sources/BridgeMacApp/Services/ControlMacFromWindowsManager.swift](/C:/Users/CHRIS/Documents/Codex/2026-04-26-build-the-first-version-of-a/mac/BridgeMac/Sources/BridgeMacApp/Services/ControlMacFromWindowsManager.swift): Mac receiver/session manager for the Windows-primary path
+- [mac/BridgeMac/Sources/BridgeMacApp/Services/MacInputInjectionService.swift](/C:/Users/CHRIS/Documents/Codex/2026-04-26-build-the-first-version-of-a/mac/BridgeMac/Sources/BridgeMacApp/Services/MacInputInjectionService.swift): native macOS mouse and keyboard injection
+- [mac/BridgeMac/Sources/BridgeMacApp/Services/InputBridgeManager.swift](/C:/Users/CHRIS/Documents/Codex/2026-04-26-build-the-first-version-of-a/mac/BridgeMac/Sources/BridgeMacApp/Services/InputBridgeManager.swift): reverse Mac-to-Windows edge capture and escape flow
 - [docs/local-protocol.md](/C:/Users/CHRIS/Documents/Codex/2026-04-26-build-the-first-version-of-a/docs/local-protocol.md): endpoint and event reference
-- [docs/input-bridge.md](/C:/Users/CHRIS/Documents/Codex/2026-04-26-build-the-first-version-of-a/docs/input-bridge.md): Input Bridge safety and permissions
+- [docs/input-bridge.md](/C:/Users/CHRIS/Documents/Codex/2026-04-26-build-the-first-version-of-a/docs/input-bridge.md): input bridge behavior, safety, and permissions
 
 ## Notes And Limitations
 
 - Clipboard sync is text-only in v1.
 - Files are transferred through the Windows shared folder configured in `StorageRoot`.
 - GPU usage is optional; the current host reports GPU name and memory when available.
-- Input Bridge is a safe first version: mouse and common keyboard forwarding are in, but not every macOS key has a perfect Windows mapping yet.
+- The Windows-primary input path is a safe first version focused on local mouse, scroll, and common keyboard forwarding.
+- The reverse Mac-to-Windows path is still available, but some uncommon keys may not map perfectly yet.
 - The Windows host is meant for trusted home or office LANs, not internet exposure.
 - The command safety layer is intentionally simple and should be expanded before any broader rollout.
 
 ## Suggested Next Steps
 
-- Add a device-pairing screen with QR code or local discovery
+- Add configurable activation edges for each direction
 - Add richer GPU telemetry and multiple disk support
 - Add drag-and-drop file upload in the Mac UI
-- Add a Windows tray app or desktop window for local approvals
+- Add a Windows tray app or local approval window for control-mode changes

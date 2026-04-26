@@ -63,6 +63,18 @@ final class BridgeAPIClient {
         return try await perform(request, decodeAs: RunCommandResponse.self)
     }
 
+    func fetchControlMacFromWindowsState(settings: BridgeConnectionSettings) async throws -> ControlMacFromWindowsState {
+        let request = try authorizedRequest(path: "/api/input/control-mac", settings: settings)
+        return try await perform(request, decodeAs: ControlMacFromWindowsState.self)
+    }
+
+    func setControlMacFromWindows(enabled: Bool, settings: BridgeConnectionSettings) async throws -> ControlMacFromWindowsState {
+        var request = try authorizedRequest(path: "/api/input/control-mac", method: "POST", settings: settings)
+        request.httpBody = try BridgeJSONCoding.encoder.encode(ControlMacFromWindowsRequest(enabled: enabled))
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        return try await perform(request, decodeAs: ControlMacFromWindowsState.self)
+    }
+
     private func perform<Response: Decodable>(_ request: URLRequest, decodeAs type: Response.Type) async throws -> Response {
         let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data)
