@@ -30,6 +30,10 @@ Version 1 includes:
 |           |-- ViewModels/
 |           `-- Views/
 `-- windows/
+    |-- BridgeWindowsDesktop/
+    |   |-- BridgeWindowsDesktop.csproj
+    |   |-- MainForm.cs
+    |   `-- Program.cs
     `-- BridgeWindowsHost/
         |-- BridgeWindowsHost.csproj
         |-- Program.cs
@@ -57,7 +61,35 @@ The trust model stays simple:
 - Each input bridge direction must be enabled explicitly in the Mac UI.
 - No cloud relay, no paid APIs, and no internet service is required.
 
-## Run The Windows Host
+## Run The Windows Desktop UI
+
+Prerequisites:
+
+- Windows 10 or 11
+- .NET 8 SDK
+
+Steps:
+
+1. Open a terminal in `windows/BridgeWindowsDesktop`.
+2. Run:
+
+```powershell
+dotnet restore
+dotnet run
+```
+
+3. The desktop app starts the copied `BridgeWindowsHost` build in the background and shows:
+   - server running status
+   - current IP addresses
+   - port
+   - masked shared secret status
+   - connected Mac client count
+   - the `Control Mac from Windows` toggle
+   - buttons for the shared folder and bridge start/stop
+
+The desktop UI is the simplest way to supervise the Windows side without relying on a console window.
+
+## Run The Windows Host Directly
 
 Prerequisites:
 
@@ -179,6 +211,9 @@ More detail is in `docs/input-bridge.md`.
 ## Main Files
 
 - `windows/BridgeWindowsHost/Program.cs`: HTTP and WebSocket routes
+- `windows/BridgeWindowsDesktop/MainForm.cs`: WinForms control window for the Windows bridge
+- `windows/BridgeWindowsDesktop/BridgeHostProcessManager.cs`: starts and stops the bundled host process for the desktop UI
+- `windows/BridgeWindowsDesktop/BridgeDesktopApiClient.cs`: polls the local host API for status and control state
 - `windows/BridgeWindowsHost/Services/ControlMacInputBridgeService.cs`: Windows edge capture and Windows-to-Mac input forwarding
 - `windows/BridgeWindowsHost/Services/InputInjectionService.cs`: native Windows mouse and keyboard injection for the reverse path
 - `windows/BridgeWindowsHost/Services/SystemStatusService.cs`: Windows metrics collection

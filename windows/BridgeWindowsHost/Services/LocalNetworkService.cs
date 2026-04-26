@@ -7,15 +7,17 @@ namespace BridgeWindowsHost.Services;
 
 public sealed class LocalNetworkService
 {
-    public BridgeStateDto GetState(BridgeOptions options)
+    public BridgeStateDto GetState(BridgeOptions options, int connectedMacClients = 0)
     {
         return new BridgeStateDto
         {
             HostName = Dns.GetHostName(),
             AppVersion = "1.0.0",
             LocalAddresses = GetLocalAddresses(),
+            Port = options.Port,
             StorageRoot = Path.GetFullPath(Environment.ExpandEnvironmentVariables(options.StorageRoot)),
-            WebSocketPath = "/ws"
+            WebSocketPath = "/ws",
+            ConnectedMacClients = connectedMacClients
         };
     }
 

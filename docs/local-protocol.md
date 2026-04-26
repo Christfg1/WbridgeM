@@ -28,6 +28,16 @@ Response:
 
 Returns host metadata for the connected Windows machine.
 
+Response includes:
+
+- `hostName`
+- `appVersion`
+- `localAddresses`
+- `port`
+- `storageRoot`
+- `webSocketPath`
+- `connectedMacClients`
+
 ### `GET /api/status`
 
 Returns the latest Windows metrics snapshot:

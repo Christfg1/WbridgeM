@@ -5,8 +5,10 @@ public sealed record BridgeStateDto
     public string HostName { get; init; } = string.Empty;
     public string AppVersion { get; init; } = "1.0.0";
     public IReadOnlyList<string> LocalAddresses { get; init; } = Array.Empty<string>();
+    public int Port { get; init; }
     public string StorageRoot { get; init; } = string.Empty;
     public string WebSocketPath { get; init; } = "/ws";
+    public int ConnectedMacClients { get; init; }
 }
 
 public sealed record StatusSnapshotDto

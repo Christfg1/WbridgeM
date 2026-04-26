@@ -17,6 +17,7 @@ public sealed class BridgeEventHub
     private readonly ConcurrentDictionary<Guid, SocketConnection> _connections = new();
 
     public bool HasConnections => !_connections.IsEmpty;
+    public int ConnectionCount => _connections.Count;
 
     public async Task HandleClientAsync(WebSocket socket, CancellationToken cancellationToken)
     {

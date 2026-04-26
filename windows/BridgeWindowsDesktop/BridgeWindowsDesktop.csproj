@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>BridgeWindowsDesktop</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BridgeWindowsHost\BridgeWindowsHost.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <Target Name="CopyBridgeHostOutput" AfterTargets="Build">
+    <PropertyGroup>
+      <BridgeHostOutputDir>..\BridgeWindowsHost\bin\$(Configuration)\net8.0-windows\</BridgeHostOutputDir>
+      <BridgeHostDestinationDir>$(OutDir)Host\</BridgeHostDestinationDir>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <BridgeHostFiles Include="$(BridgeHostOutputDir)**\*.*" />
+    </ItemGroup>
+
+    <MakeDir Directories="$(BridgeHostDestinationDir)" />
+    <Copy
+      SourceFiles="@(BridgeHostFiles)"
+      DestinationFiles="@(BridgeHostFiles->'$(BridgeHostDestinationDir)%(RecursiveDir)%(Filename)%(Extension)')"
+      SkipUnchangedFiles="true" />
+  </Target>
+</Project>

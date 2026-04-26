@@ -46,9 +46,9 @@ app.MapGet("/api/health", () => Results.Ok(new
 var api = app.MapGroup("/api");
 api.AddEndpointFilter<BridgeSecretEndpointFilter>();
 
-api.MapGet("/bridge", (IOptions<BridgeOptions> options, LocalNetworkService network) =>
+api.MapGet("/bridge", (IOptions<BridgeOptions> options, LocalNetworkService network, BridgeEventHub eventHub) =>
 {
-    return Results.Ok(network.GetState(options.Value));
+    return Results.Ok(network.GetState(options.Value, eventHub.ConnectionCount));
 });
 
 api.MapGet("/status", async (SystemStatusService statusService, CancellationToken cancellationToken) =>
