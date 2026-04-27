@@ -6,11 +6,20 @@ This project now supports two local-only keyboard and mouse sharing directions. 
 
 When `Control Mac from Windows` is enabled in the Mac app:
 
-- Windows remains the active desktop until its cursor reaches the right edge
+- Windows remains the active desktop until its cursor reaches the configured activation edge
 - Windows captures mouse movement, clicks, scroll, and common keyboard events
 - Windows forwards those events directly over the existing bridge connection
 - the Mac injects them with native macOS APIs
 - `Ctrl + Alt + Windows + Esc` returns control back to Windows
+
+The Windows desktop app controls which edge is used. The available physical layout options are:
+
+- Left of Windows monitor
+- Right of Windows monitor
+- Above Windows monitor
+- Below Windows monitor
+
+The default is `Left of Windows monitor`. That setting is saved locally on Windows, shown with a small preview in the desktop UI, and used for both activation and cursor return when control comes back to Windows.
 
 Why this is the default mode:
 
@@ -57,6 +66,7 @@ This first version is deliberately conservative:
 - it stays on the local network and talks directly to the Windows host
 - it requires explicit UI confirmation before either control mode is enabled
 - `Control Mac from Windows` keeps Windows local until the configured edge is reached
+- when Windows regains control, the cursor is restored just inside that same edge
 - the Mac releases held input state when a Windows-to-Mac control session ends
 - the Windows host releases held input state when a Mac-to-Windows control session ends
 - each direction has a dedicated escape hotkey to return control to the local device
@@ -64,7 +74,7 @@ This first version is deliberately conservative:
 
 ## Current Limits
 
-- activation is right-edge only in v1
 - keyboard forwarding focuses on common keys, modifiers, arrows, and function keys
 - unusual layouts and some less common keys may not map perfectly yet
 - the Windows-primary path currently depends on the Mac app staying connected to the main bridge WebSocket
+- the reverse Mac-to-Windows path still activates from the Mac's right edge only in this version

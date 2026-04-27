@@ -14,6 +14,20 @@ internal sealed record DesktopBridgeOptions
     public string StorageRoot { get; init; } = "%USERPROFILE%\\Documents\\BridgeDrop";
 }
 
+internal enum MacScreenPosition
+{
+    LeftOfWindowsMonitor,
+    RightOfWindowsMonitor,
+    AboveWindowsMonitor,
+    BelowWindowsMonitor
+}
+
+internal sealed record DesktopLocalSettings
+{
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public MacScreenPosition MacScreenPosition { get; init; } = MacScreenPosition.LeftOfWindowsMonitor;
+}
+
 internal sealed record HealthResponse
 {
     public string Status { get; init; } = string.Empty;
@@ -44,12 +58,21 @@ internal sealed record ControlMacFromWindowsStateResponse
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public ControlMacBridgePhase Phase { get; init; }
 
-    public string ActivationEdge { get; init; } = "Right";
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public MacScreenPosition ScreenPosition { get; init; } = MacScreenPosition.LeftOfWindowsMonitor;
+
+    public string ActivationEdge { get; init; } = "Left";
     public string EscapeHotkey { get; init; } = "Ctrl + Alt + Windows + Esc";
     public bool RequiresMacAccessibilityPermission { get; init; } = true;
 }
 
-internal sealed record ControlMacFromWindowsRequest(bool Enabled);
+internal sealed record ControlMacFromWindowsRequest
+{
+    public bool Enabled { get; init; }
+
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public MacScreenPosition? ScreenPosition { get; init; }
+}
 
 internal sealed record DesktopBridgeRuntimeSnapshot(
     BridgeStateResponse BridgeState,

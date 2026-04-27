@@ -17,6 +17,25 @@ internal sealed class MainForm : Form
     private readonly Label _macClientStatusValue = CreateValueLabel();
     private readonly Label _sharedFolderValue = CreateWrappedValueLabel();
     private readonly Label _controlMacPhaseValue = CreateValueLabel();
+    private readonly Label _screenPositionHelpLabel = new()
+    {
+        AutoSize = true,
+        ForeColor = Color.DimGray,
+        MaximumSize = new Size(560, 0),
+        Margin = new Padding(0, 0, 0, 8),
+        Text = "Choose where your MacBook is physically placed relative to your Windows monitor."
+    };
+    private readonly Label _layoutPreviewLabel = new()
+    {
+        AutoSize = false,
+        Width = 260,
+        Height = 82,
+        BorderStyle = BorderStyle.FixedSingle,
+        BackColor = Color.WhiteSmoke,
+        Font = new Font("Consolas", 11, FontStyle.Bold),
+        Padding = new Padding(10),
+        Margin = new Padding(0, 6, 0, 0)
+    };
     private readonly Label _footerValue = new()
     {
         AutoSize = true,
@@ -30,6 +49,12 @@ internal sealed class MainForm : Form
         AutoSize = true,
         Text = "Control Mac from Windows",
         Margin = new Padding(0, 0, 16, 0)
+    };
+
+    private readonly ComboBox _screenPositionCombo = new()
+    {
+        DropDownStyle = ComboBoxStyle.DropDownList,
+        Width = 280
     };
 
     private readonly Button _openSharedFolderButton = new()
@@ -46,11 +71,14 @@ internal sealed class MainForm : Form
 
     private bool _isRefreshing;
     private bool _isUpdatingToggle;
+    private bool _isUpdatingScreenPosition;
     private bool _isShuttingDown;
+    private DesktopLocalSettings _desktopSettings;
 
     public MainForm()
     {
         _processManager = new BridgeHostProcessManager(_configService);
+        _desktopSettings = LoadDesktopSettingsSafe();
 
         Text = "BridgeWindowsHost Control";
         StartPosition = FormStartPosition.CenterScreen;
@@ -63,8 +91,20 @@ internal sealed class MainForm : Form
         FormClosing += HandleFormClosing;
         _refreshTimer.Tick += async (_, _) => await RefreshRuntimeAsync();
         _controlMacToggle.CheckedChanged += async (_, _) => await HandleControlMacToggleChangedAsync();
+        _screenPositionCombo.SelectedIndexChanged += async (_, _) => await HandleScreenPositionChangedAsync();
         _openSharedFolderButton.Click += (_, _) => HandleOpenSharedFolderClicked();
         _startStopButton.Click += async (_, _) => await HandleStartStopClickedAsync();
+
+        _screenPositionCombo.Items.AddRange(Enum.GetValues<MacScreenPosition>().Cast<object>().ToArray());
+        _screenPositionCombo.Format += (_, eventArgs) =>
+        {
+            if (eventArgs.ListItem is MacScreenPosition position)
+            {
+                eventArgs.Value = GetScreenPositionLabel(position);
+            }
+        };
+
+        ApplyDesktopSettingsSnapshot();
     }
 
     private Control BuildLayout()
@@ -104,6 +144,18 @@ internal sealed class MainForm : Form
         AddLabeledRow(root, "Port", _portValue);
         AddLabeledRow(root, "Shared Secret Status", _secretStatusValue);
         AddLabeledRow(root, "Connected Mac Clients", _macClientStatusValue);
+
+        var screenPositionPanel = new TableLayoutPanel
+        {
+            AutoSize = true,
+            ColumnCount = 1,
+            Margin = new Padding(0)
+        };
+        screenPositionPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        screenPositionPanel.Controls.Add(_screenPositionHelpLabel, 0, 0);
+        screenPositionPanel.Controls.Add(_screenPositionCombo, 0, 1);
+        screenPositionPanel.Controls.Add(_layoutPreviewLabel, 0, 2);
+        AddLabeledRow(root, "Mac Screen Position", screenPositionPanel);
 
         var controlPanel = new FlowLayoutPanel
         {
@@ -245,13 +297,57 @@ internal sealed class MainForm : Form
         try
         {
             var options = LoadConfiguration();
-            await _apiClient.SetControlMacFromWindowsAsync(options, _controlMacToggle.Checked, CancellationToken.None);
+            var state = await _apiClient.SetControlMacFromWindowsAsync(
+                options,
+                _controlMacToggle.Checked,
+                GetSelectedScreenPosition(),
+                CancellationToken.None);
 
             var message = _controlMacToggle.Checked
-                ? "Control Mac from Windows enabled."
+                ? $"Control Mac from Windows enabled on the {state.ActivationEdge.ToLowerInvariant()} edge."
                 : "Control Mac from Windows disabled.";
 
             SetFooter(message, Color.DimGray);
+        }
+        catch (Exception exception)
+        {
+            SetFooter(exception.Message, Color.Firebrick);
+        }
+        finally
+        {
+            await RefreshRuntimeAsync();
+        }
+    }
+
+    private async Task HandleScreenPositionChangedAsync()
+    {
+        if (_isUpdatingScreenPosition)
+        {
+            return;
+        }
+
+        var selectedPosition = GetSelectedScreenPosition();
+        _desktopSettings = _desktopSettings with { MacScreenPosition = selectedPosition };
+        _configService.SaveDesktopSettings(_desktopSettings);
+        UpdateLayoutPreview(selectedPosition);
+
+        try
+        {
+            var options = LoadConfiguration();
+            if (!await _apiClient.IsHealthyAsync(options, CancellationToken.None))
+            {
+                SetFooter($"Saved Mac screen position: {GetScreenPositionLabel(selectedPosition)}. It will apply after the bridge starts.", Color.DimGray);
+                return;
+            }
+
+            var state = await _apiClient.SetControlMacFromWindowsAsync(
+                options,
+                _controlMacToggle.Checked,
+                selectedPosition,
+                CancellationToken.None);
+
+            _controlMacPhaseValue.Text = $"State: {state.Phase} | Edge: {state.ActivationEdge}";
+            SetFooter($"Saved Mac screen position: {GetScreenPositionLabel(selectedPosition)}. Windows will activate from the {state.ActivationEdge.ToLowerInvariant()} edge.", Color.DimGray);
         }
         catch (Exception exception)
         {
@@ -287,6 +383,7 @@ internal sealed class MainForm : Form
             }
 
             var runtime = await _apiClient.GetRuntimeAsync(options, CancellationToken.None);
+            runtime = await EnsureScreenPositionAppliedAsync(options, runtime);
             ApplyRunningSnapshot(runtime, isManagedHostRunning);
         }
         catch (Exception exception)
@@ -326,7 +423,7 @@ internal sealed class MainForm : Form
         _controlMacToggle.Checked = runtime.ControlState.Enabled;
         _isUpdatingToggle = false;
         _controlMacToggle.Enabled = true;
-        _controlMacPhaseValue.Text = $"State: {runtime.ControlState.Phase}";
+        _controlMacPhaseValue.Text = $"State: {runtime.ControlState.Phase} | Edge: {runtime.ControlState.ActivationEdge}";
         _openSharedFolderButton.Enabled = true;
 
         if (isManagedHostRunning)
@@ -370,7 +467,7 @@ internal sealed class MainForm : Form
         _controlMacToggle.Checked = false;
         _isUpdatingToggle = false;
         _controlMacToggle.Enabled = false;
-        _controlMacPhaseValue.Text = "State: Off";
+        _controlMacPhaseValue.Text = $"State: Off | Edge: {GetActivationEdgeLabel(GetSelectedScreenPosition())}";
     }
 
     private void ApplyErrorSnapshot(string message)
@@ -402,13 +499,36 @@ internal sealed class MainForm : Form
         {
             if (await _apiClient.IsHealthyAsync(options, CancellationToken.None))
             {
-                await _apiClient.SetControlMacFromWindowsAsync(options, false, CancellationToken.None);
+                await _apiClient.SetControlMacFromWindowsAsync(
+                    options,
+                    false,
+                    GetSelectedScreenPosition(),
+                    CancellationToken.None);
             }
         }
         catch
         {
             // If the bridge is already unresponsive, shutting down the host process is still the safest fallback.
         }
+    }
+
+    private async Task<DesktopBridgeRuntimeSnapshot> EnsureScreenPositionAppliedAsync(
+        DesktopBridgeOptions options,
+        DesktopBridgeRuntimeSnapshot runtime)
+    {
+        var desiredPosition = GetSelectedScreenPosition();
+        if (runtime.ControlState.ScreenPosition == desiredPosition)
+        {
+            return runtime;
+        }
+
+        var updatedControlState = await _apiClient.SetControlMacFromWindowsAsync(
+            options,
+            runtime.ControlState.Enabled,
+            desiredPosition,
+            CancellationToken.None);
+
+        return runtime with { ControlState = updatedControlState };
     }
 
     private DesktopBridgeOptions LoadConfiguration()
@@ -432,6 +552,69 @@ internal sealed class MainForm : Form
     {
         _footerValue.Text = text;
         _footerValue.ForeColor = color;
+    }
+
+    private DesktopLocalSettings LoadDesktopSettingsSafe()
+    {
+        try
+        {
+            return _configService.LoadDesktopSettings();
+        }
+        catch
+        {
+            return new DesktopLocalSettings();
+        }
+    }
+
+    private void ApplyDesktopSettingsSnapshot()
+    {
+        _isUpdatingScreenPosition = true;
+        _screenPositionCombo.SelectedItem = _desktopSettings.MacScreenPosition;
+        _isUpdatingScreenPosition = false;
+        UpdateLayoutPreview(_desktopSettings.MacScreenPosition);
+    }
+
+    private MacScreenPosition GetSelectedScreenPosition()
+    {
+        return _screenPositionCombo.SelectedItem is MacScreenPosition position
+            ? position
+            : _desktopSettings.MacScreenPosition;
+    }
+
+    private void UpdateLayoutPreview(MacScreenPosition position)
+    {
+        _layoutPreviewLabel.Text = position switch
+        {
+            MacScreenPosition.LeftOfWindowsMonitor => "[Mac]      [Windows]",
+            MacScreenPosition.RightOfWindowsMonitor => "[Windows]  [Mac]",
+            MacScreenPosition.AboveWindowsMonitor => "[Mac]" + Environment.NewLine + Environment.NewLine + "[Windows]",
+            MacScreenPosition.BelowWindowsMonitor => "[Windows]" + Environment.NewLine + Environment.NewLine + "[Mac]",
+            _ => "[Mac]      [Windows]"
+        };
+    }
+
+    private static string GetScreenPositionLabel(MacScreenPosition position)
+    {
+        return position switch
+        {
+            MacScreenPosition.LeftOfWindowsMonitor => "Left of Windows monitor",
+            MacScreenPosition.RightOfWindowsMonitor => "Right of Windows monitor",
+            MacScreenPosition.AboveWindowsMonitor => "Above Windows monitor",
+            MacScreenPosition.BelowWindowsMonitor => "Below Windows monitor",
+            _ => "Left of Windows monitor"
+        };
+    }
+
+    private static string GetActivationEdgeLabel(MacScreenPosition position)
+    {
+        return position switch
+        {
+            MacScreenPosition.LeftOfWindowsMonitor => "Left",
+            MacScreenPosition.RightOfWindowsMonitor => "Right",
+            MacScreenPosition.AboveWindowsMonitor => "Top",
+            MacScreenPosition.BelowWindowsMonitor => "Bottom",
+            _ => "Left"
+        };
     }
 
     private static void AddLabeledRow(TableLayoutPanel table, string caption, Control valueControl)

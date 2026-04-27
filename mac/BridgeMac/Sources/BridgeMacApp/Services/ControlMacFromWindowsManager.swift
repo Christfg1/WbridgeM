@@ -12,7 +12,7 @@ final class ControlMacFromWindowsManager {
     private(set) var currentState = ControlMacFromWindowsState(
         enabled: false,
         phase: .off,
-        activationEdge: "Right",
+        activationEdge: "Left",
         escapeHotkey: "Ctrl + Alt + Windows + Esc",
         requiresMacAccessibilityPermission: true
     )
@@ -31,7 +31,7 @@ final class ControlMacFromWindowsManager {
 
         let state = try await apiClient.setControlMacFromWindows(enabled: true, settings: settings)
         applyRemoteState(state)
-        emitLog("Windows can now take control of the Mac when its cursor reaches the right edge.")
+        emitLog("Windows can now take control of the Mac when its cursor reaches the \(state.activationEdge.lowercased()) screen edge.")
     }
 
     func disable(settings: BridgeConnectionSettings) async throws {

@@ -12,6 +12,12 @@ final class BridgeAPIClient {
         return try await perform(request, decodeAs: BridgeState.self)
     }
 
+    func testConnection(settings: BridgeConnectionSettings) async throws -> BridgeState {
+        let healthRequest = try unauthenticatedRequest(path: "/api/health", settings: settings, timeoutInterval: 5)
+        _ = try await perform(healthRequest, decodeAs: HealthCheckResponse.self)
+        return try await fetchBridgeState(settings: settings)
+    }
+
     func fetchStatus(settings: BridgeConnectionSettings) async throws -> StatusSnapshot {
         let request = try authorizedRequest(path: "/api/status", settings: settings)
         return try await perform(request, decodeAs: StatusSnapshot.self)
@@ -44,9 +50,15 @@ final class BridgeAPIClient {
 
     func downloadFile(relativePath: String, settings: BridgeConnectionSettings) async throws -> Data {
         let request = try authorizedRequest(path: "/api/files/download", queryItems: [URLQueryItem(name: "relativePath", value: relativePath)], settings: settings)
-        let (data, response) = try await session.data(for: request)
-        try validate(response: response, data: data)
-        return data
+        do {
+            let (data, response) = try await session.data(for: request)
+            try validate(response: response, data: data)
+            return data
+        } catch let bridgeError as BridgeClientError {
+            throw bridgeError
+        } catch {
+            throw classifyTransportError(error, request: request)
+        }
     }
 
     func previewCommand(command: String, shell: CommandShell, settings: BridgeConnectionSettings) async throws -> CommandPreviewResponse {
@@ -76,9 +88,15 @@ final class BridgeAPIClient {
     }
 
     private func perform<Response: Decodable>(_ request: URLRequest, decodeAs type: Response.Type) async throws -> Response {
-        let (data, response) = try await session.data(for: request)
-        try validate(response: response, data: data)
-        return try BridgeJSONCoding.decoder.decode(Response.self, from: data)
+        do {
+            let (data, response) = try await session.data(for: request)
+            try validate(response: response, data: data)
+            return try BridgeJSONCoding.decoder.decode(Response.self, from: data)
+        } catch let bridgeError as BridgeClientError {
+            throw bridgeError
+        } catch {
+            throw classifyTransportError(error, request: request)
+        }
     }
 
     private func validate(response: URLResponse, data: Data) throws {
@@ -87,6 +105,10 @@ final class BridgeAPIClient {
         }
 
         guard (200..<300).contains(httpResponse.statusCode) else {
+            if httpResponse.statusCode == 401 {
+                throw BridgeClientError.wrongSharedSecret("The shared secret is wrong. Enter the same secret shown in the Windows Bridge Desktop app.")
+            }
+
             if let serverError = try? BridgeJSONCoding.decoder.decode(RemoteErrorResponse.self, from: data) {
                 throw BridgeClientError.server(message: serverError.error)
             }
@@ -95,18 +117,19 @@ final class BridgeAPIClient {
         }
     }
 
-    private func authorizedRequest(
+    private func unauthenticatedRequest(
         path: String,
         method: String = "GET",
         queryItems: [URLQueryItem] = [],
-        settings: BridgeConnectionSettings
+        settings: BridgeConnectionSettings,
+        timeoutInterval: TimeInterval = 30
     ) throws -> URLRequest {
         guard !settings.host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw BridgeClientError.invalidConfiguration("Enter the Windows host or IP address first.")
         }
 
-        guard !settings.sharedSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw BridgeClientError.invalidConfiguration("Enter the shared secret before connecting.")
+        guard (1...65535).contains(settings.port) else {
+            throw BridgeClientError.invalidConfiguration("Enter a valid bridge port between 1 and 65535.")
         }
 
         var components = URLComponents()
@@ -124,9 +147,53 @@ final class BridgeAPIClient {
 
         var request = URLRequest(url: url)
         request.httpMethod = method
-        request.timeoutInterval = 30
+        request.timeoutInterval = timeoutInterval
+        return request
+    }
+
+    private func authorizedRequest(
+        path: String,
+        method: String = "GET",
+        queryItems: [URLQueryItem] = [],
+        settings: BridgeConnectionSettings
+    ) throws -> URLRequest {
+        guard !settings.sharedSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw BridgeClientError.invalidConfiguration("Enter the shared secret before connecting.")
+        }
+
+        var request = try unauthenticatedRequest(
+            path: path,
+            method: method,
+            queryItems: queryItems,
+            settings: settings
+        )
         request.setValue(settings.sharedSecret, forHTTPHeaderField: "X-Bridge-Secret")
         return request
+    }
+
+    private func classifyTransportError(_ error: Error, request: URLRequest) -> Error {
+        guard let urlError = error as? URLError else {
+            return error
+        }
+
+        switch urlError.code {
+        case .cannotFindHost, .badURL, .unsupportedURL, .dnsLookupFailed:
+            return BridgeClientError.wrongHostOrPort("The Windows host/IP or port looks wrong. Check the Host/IP and Port fields, then try again.")
+        case .cannotConnectToHost:
+            return BridgeClientError.windowsHostNotRunning(buildHostDownMessage(request: request))
+        case .timedOut, .networkConnectionLost, .notConnectedToInternet, .cannotLoadFromNetwork, .dataNotAllowed, .internationalRoamingOff, .callIsActive:
+            return BridgeClientError.firewallOrNetworkBlocked("The bridge could not be reached. Check that both devices are on the same local network and that Windows Firewall is allowing the bridge port.")
+        default:
+            return BridgeClientError.firewallOrNetworkBlocked("The bridge connection failed. Confirm the Windows Bridge Desktop app is running, the Host/IP and Port are correct, and the local network allows the connection.")
+        }
+    }
+
+    private func buildHostDownMessage(request: URLRequest) -> String {
+        if let url = request.url, let host = url.host, let port = url.port {
+            return "The Windows bridge is not running at \(host):\(port). Start the Windows Bridge Desktop app first, then connect."
+        }
+
+        return "The Windows bridge is not running on the selected Host/IP and Port. Start the Windows Bridge Desktop app first, then connect."
     }
 
     private func makeMultipartBody(fileURL: URL, subdirectory: String?) throws -> (boundary: String, body: Data) {
@@ -157,6 +224,10 @@ enum BridgeClientError: LocalizedError {
     case invalidResponse
     case notConnected(String)
     case permissionRequired(String)
+    case windowsHostNotRunning(String)
+    case wrongHostOrPort(String)
+    case wrongSharedSecret(String)
+    case firewallOrNetworkBlocked(String)
     case server(message: String)
 
     var errorDescription: String? {
@@ -168,6 +239,14 @@ enum BridgeClientError: LocalizedError {
         case let .notConnected(message):
             return message
         case let .permissionRequired(message):
+            return message
+        case let .windowsHostNotRunning(message):
+            return message
+        case let .wrongHostOrPort(message):
+            return message
+        case let .wrongSharedSecret(message):
+            return message
+        case let .firewallOrNetworkBlocked(message):
             return message
         case let .server(message):
             return message

@@ -6,12 +6,17 @@ internal sealed class BridgeHostConfigService
 {
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web)
     {
-        PropertyNameCaseInsensitive = true
+        PropertyNameCaseInsensitive = true,
+        WriteIndented = true
     };
 
     public string HostRootDirectory => Path.Combine(AppContext.BaseDirectory, "Host");
     public string HostExecutablePath => Path.Combine(HostRootDirectory, "BridgeWindowsHost.exe");
     public string AppSettingsPath => Path.Combine(HostRootDirectory, "appsettings.json");
+    public string DesktopSettingsDirectory => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "BridgeWindowsDesktop");
+    public string DesktopSettingsPath => Path.Combine(DesktopSettingsDirectory, "desktop-settings.json");
 
     public DesktopBridgeOptions Load()
     {
@@ -22,6 +27,23 @@ internal sealed class BridgeHostConfigService
 
         var settings = JsonSerializer.Deserialize<DesktopBridgeAppSettings>(File.ReadAllText(AppSettingsPath), SerializerOptions);
         return settings?.Bridge ?? new DesktopBridgeOptions();
+    }
+
+    public DesktopLocalSettings LoadDesktopSettings()
+    {
+        if (!File.Exists(DesktopSettingsPath))
+        {
+            return new DesktopLocalSettings();
+        }
+
+        var settings = JsonSerializer.Deserialize<DesktopLocalSettings>(File.ReadAllText(DesktopSettingsPath), SerializerOptions);
+        return settings ?? new DesktopLocalSettings();
+    }
+
+    public void SaveDesktopSettings(DesktopLocalSettings settings)
+    {
+        Directory.CreateDirectory(DesktopSettingsDirectory);
+        File.WriteAllText(DesktopSettingsPath, JsonSerializer.Serialize(settings, SerializerOptions));
     }
 
     public string GetExpandedStorageRoot(DesktopBridgeOptions options)

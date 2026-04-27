@@ -36,6 +36,11 @@ struct BridgeState: Decodable {
     let webSocketPath: String
 }
 
+struct HealthCheckResponse: Decodable {
+    let status: String
+    let appVersion: String?
+}
+
 struct StatusSnapshot: Decodable {
     let hostName: String
     let operatingSystem: String

@@ -89,6 +89,9 @@ struct ContentView: View {
     private var connectionSection: some View {
         SectionCard(title: "Connection") {
             VStack(alignment: .leading, spacing: 16) {
+                Text(viewModel.windowsBridgeInstruction)
+                    .foregroundStyle(.secondary)
+
                 HStack(spacing: 12) {
                     LabeledField(title: "Windows Host") {
                         TextField(BridgeConnectionSettings.defaultHost, text: $viewModel.hostField)
@@ -120,13 +123,21 @@ struct ContentView: View {
                 ))
 
                 HStack(spacing: 12) {
+                    Button("Test Connection") {
+                        Task {
+                            await viewModel.testConnection()
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(viewModel.connectionState == .connecting || viewModel.isTestingConnection)
+
                     Button("Connect") {
                         Task {
                             await viewModel.connect()
                         }
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(viewModel.connectionState == .connecting)
+                    .disabled(viewModel.connectionState == .connecting || viewModel.isTestingConnection)
 
                     Button("Disconnect") {
                         viewModel.disconnect()
@@ -144,6 +155,10 @@ struct ContentView: View {
 
                     statusBadge
                 }
+
+                Text(viewModel.connectionTestMessage)
+                    .font(.footnote)
+                    .foregroundStyle(connectionMessageColor)
 
                 if let bridgeState = viewModel.bridgeState {
                     VStack(alignment: .leading, spacing: 6) {
@@ -222,6 +237,11 @@ struct ContentView: View {
     private var controlMacFromWindowsSection: some View {
         SectionCard(title: "Control Mac from Windows") {
             VStack(alignment: .leading, spacing: 12) {
+                if !viewModel.hasConnectedBridge {
+                    Text("Connect to the Windows bridge first to enable Windows-to-Mac control.")
+                        .foregroundStyle(.secondary)
+                }
+
                 Toggle("Control Mac from Windows", isOn: Binding(
                     get: { viewModel.isControlMacFromWindowsEnabled },
                     set: { newValue in
@@ -264,6 +284,11 @@ struct ContentView: View {
     private var inputBridgeSection: some View {
         SectionCard(title: "Control Windows from Mac") {
             VStack(alignment: .leading, spacing: 12) {
+                if !viewModel.hasConnectedBridge {
+                    Text("Connect to the Windows bridge first to enable the reverse input bridge.")
+                        .foregroundStyle(.secondary)
+                }
+
                 Toggle("Input Bridge Mode", isOn: Binding(
                     get: { viewModel.isInputBridgeModeEnabled },
                     set: { newValue in
@@ -472,6 +497,14 @@ struct ContentView: View {
             .padding(.vertical, 6)
             .background(viewModel.connectionState == .connected ? Color.green.opacity(0.2) : Color.orange.opacity(0.18))
             .clipShape(Capsule())
+    }
+
+    private var connectionMessageColor: Color {
+        if viewModel.connectionTestSucceeded {
+            return .green
+        }
+
+        return viewModel.connectionTestMessage == viewModel.windowsBridgeInstruction ? .secondary : .red
     }
 
     private var controlMacBadge: some View {

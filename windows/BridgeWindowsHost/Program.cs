@@ -146,7 +146,7 @@ api.MapGet("/input/control-mac", (ControlMacInputBridgeService controlMacInputBr
 
 api.MapPost("/input/control-mac", (ControlMacFromWindowsRequest request, ControlMacInputBridgeService controlMacInputBridgeService) =>
 {
-    var state = controlMacInputBridgeService.SetEnabled(request.Enabled);
+    var state = controlMacInputBridgeService.SetEnabled(request.Enabled, request.ScreenPosition);
     return Results.Ok(state);
 });
 

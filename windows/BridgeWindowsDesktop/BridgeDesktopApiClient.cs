@@ -37,13 +37,23 @@ internal sealed class BridgeDesktopApiClient
         return new DesktopBridgeRuntimeSnapshot(bridgeState, controlState);
     }
 
-    public async Task SetControlMacFromWindowsAsync(DesktopBridgeOptions options, bool enabled, CancellationToken cancellationToken)
+    public async Task<ControlMacFromWindowsStateResponse> SetControlMacFromWindowsAsync(
+        DesktopBridgeOptions options,
+        bool enabled,
+        MacScreenPosition? screenPosition,
+        CancellationToken cancellationToken)
     {
         using var request = CreateAuthorizedRequest(HttpMethod.Post, BuildUri(options, "/api/input/control-mac"), options);
-        request.Content = JsonContent.Create(new ControlMacFromWindowsRequest(enabled));
+        request.Content = JsonContent.Create(new ControlMacFromWindowsRequest
+        {
+            Enabled = enabled,
+            ScreenPosition = screenPosition
+        });
 
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         await EnsureSuccessAsync(response, cancellationToken);
+        var payload = await response.Content.ReadFromJsonAsync<ControlMacFromWindowsStateResponse>(SerializerOptions, cancellationToken);
+        return payload ?? throw new InvalidOperationException("The bridge returned an empty control state payload.");
     }
 
     private async Task<T> GetAuthorizedJsonAsync<T>(DesktopBridgeOptions options, string path, CancellationToken cancellationToken)

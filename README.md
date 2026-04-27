@@ -48,7 +48,7 @@ The Windows app hosts a small LAN-only API on port `5055` by default. The Mac Sw
 
 There are now two input bridge directions:
 
-- Primary/default: Windows captures input at its screen edge and forwards it to the Mac over the existing main bridge WebSocket.
+- Primary/default: Windows captures input at the configured screen edge and forwards it to the Mac over the existing main bridge WebSocket.
 - Reverse/optional: the Mac captures input at its screen edge and forwards it to Windows over the dedicated `/ws/input` socket.
 
 The trust model stays simple:
@@ -84,6 +84,7 @@ dotnet run
    - port
    - masked shared secret status
    - connected Mac client count
+   - a persisted `Mac screen position` selector with a small layout preview
    - the `Control Mac from Windows` toggle
    - buttons for the shared folder and bridge start/stop
 
@@ -152,12 +153,14 @@ swift run BridgeMac
 
 Inside the Mac app:
 
-1. Enter the Windows host IP.
-2. Leave the default port `5055` unless you changed it on Windows.
-3. Enter the same shared secret from `appsettings.json`.
-4. Click `Connect`.
-5. Enable `Control Mac from Windows` if you want Windows to be the primary controller.
-6. Optionally enable `Input Bridge Mode` if you also want the reverse Mac-to-Windows path available.
+1. Start the Windows Bridge Desktop app first.
+2. Enter the Windows host IP.
+3. Leave the default port `5055` unless you changed it on Windows.
+4. Enter the same shared secret from `appsettings.json`.
+5. Click `Test Connection` if you want a quick LAN/auth check before opening the live session.
+6. Click `Connect`.
+7. Enable `Control Mac from Windows` if you want Windows to be the primary controller.
+8. Optionally enable `Input Bridge Mode` if you also want the reverse Mac-to-Windows path available.
 
 ## Input Bridge Modes
 
@@ -167,10 +170,19 @@ This is the main/default desktop sharing path for the app.
 
 When `Control Mac from Windows` is enabled:
 
-- Windows stays local until its cursor reaches the right edge of the Windows desktop
+- Windows stays local until its cursor reaches the chosen activation edge of the Windows desktop
 - Windows begins forwarding mouse movement, clicks, scroll, and common keyboard events to the Mac
 - the Mac injects those events with native macOS APIs
 - `Ctrl + Alt + Windows + Esc` returns control back to Windows
+
+The Windows desktop UI lets you choose where the MacBook is physically placed relative to the Windows monitor:
+
+- Left of Windows monitor
+- Right of Windows monitor
+- Above Windows monitor
+- Below Windows monitor
+
+That setting is saved locally on Windows and decides which edge activates control. The cursor is restored near that same edge when Windows regains control.
 
 This direction uses:
 
@@ -238,7 +250,7 @@ More detail is in `docs/input-bridge.md`.
 
 ## Suggested Next Steps
 
-- Add configurable activation edges for each direction
+- Add configurable activation edges for the reverse Mac-to-Windows mode
 - Add richer GPU telemetry and multiple disk support
 - Add drag-and-drop file upload in the Mac UI
 - Add a Windows tray app or local approval window for control-mode changes

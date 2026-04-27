@@ -54,10 +54,13 @@ final class BridgeViewModel: ObservableObject {
     @Published var commandResult: RunCommandResponse?
     @Published var controlMacFromWindowsPhase: InputBridgePhase = .off
     @Published var isControlMacFromWindowsEnabled = false
-    @Published var controlMacActivationEdge = "Right"
+    @Published var controlMacActivationEdge = "Left"
     @Published var controlMacEscapeHotkey = "Ctrl + Alt + Windows + Esc"
     @Published var inputBridgePhase: InputBridgePhase = .off
     @Published var isInputBridgeModeEnabled = false
+    @Published var isTestingConnection = false
+    @Published var connectionTestMessage = "Start the Windows Bridge Desktop app first, then connect."
+    @Published var connectionTestSucceeded = false
     @Published var errorMessage: String?
     @Published var activityLog: [String] = []
     @Published var isRunningCommand = false
@@ -132,6 +135,10 @@ final class BridgeViewModel: ObservableObject {
             && !settings.sharedSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    var windowsBridgeInstruction: String {
+        "Start the Windows Bridge Desktop app first, then connect."
+    }
+
     var commandPreviewSummary: String {
         guard let commandPreview else {
             return "Preview the command to see warnings before you run it."
@@ -164,10 +171,14 @@ final class BridgeViewModel: ObservableObject {
         case .off:
             return "Off. Windows will not capture and forward input to the Mac."
         case .armed:
-            return "Armed. When Windows reaches the right screen edge, it can begin controlling the Mac."
+            return "Armed. When Windows reaches the \(controlMacActivationEdge.lowercased()) screen edge, it can begin controlling the Mac."
         case .active:
             return "Active. Windows is currently driving the Mac with remote mouse and keyboard input."
         }
+    }
+
+    var hasConnectedBridge: Bool {
+        connectionState == .connected
     }
 
     func connect() async {
@@ -190,7 +201,7 @@ final class BridgeViewModel: ObservableObject {
         appendLog("Connecting to \(settings.host):\(settings.port)")
 
         do {
-            bridgeState = try await apiClient.fetchBridgeState(settings: settings)
+            bridgeState = try await apiClient.testConnection(settings: settings)
 
             async let statusRequest = apiClient.fetchStatus(settings: settings)
             async let clipboardRequest = apiClient.fetchClipboard(settings: settings)
@@ -220,11 +231,50 @@ final class BridgeViewModel: ObservableObject {
 
             connectionState = .connected
             startStatusPolling()
+            connectionTestSucceeded = true
+            connectionTestMessage = "Connected to \(bridgeState?.hostName ?? settings.host) on port \(settings.port)."
             appendLog("Connected to \(bridgeState?.hostName ?? settings.host)")
         } catch {
             connectionState = .disconnected
             errorMessage = error.localizedDescription
+            connectionTestSucceeded = false
+            connectionTestMessage = error.localizedDescription
             appendLog("Connection failed: \(error.localizedDescription)")
+        }
+    }
+
+    func testConnection() async {
+        guard !hostField.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            connectionTestSucceeded = false
+            connectionTestMessage = "Enter the Windows host before testing the connection."
+            return
+        }
+
+        guard Self.parsePort(portField) != nil else {
+            connectionTestSucceeded = false
+            connectionTestMessage = "Enter a valid bridge port between 1 and 65535 before testing the connection."
+            return
+        }
+
+        guard !sharedSecretField.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            connectionTestSucceeded = false
+            connectionTestMessage = "Enter the shared secret before testing the connection."
+            return
+        }
+
+        isTestingConnection = true
+        defer { isTestingConnection = false }
+
+        do {
+            let bridgeState = try await apiClient.testConnection(settings: settings)
+            connectionTestSucceeded = true
+            connectionTestMessage = "Connection test passed. Windows host \(bridgeState.hostName) is reachable at \(settings.host):\(settings.port)."
+            appendLog("Connection test succeeded for \(settings.host):\(settings.port)")
+        } catch {
+            connectionTestSucceeded = false
+            connectionTestMessage = error.localizedDescription
+            errorMessage = error.localizedDescription
+            appendLog("Connection test failed: \(error.localizedDescription)")
         }
     }
 
@@ -241,6 +291,8 @@ final class BridgeViewModel: ObservableObject {
         statusPollingTask = nil
         webSocketService.disconnect()
         connectionState = .disconnected
+        connectionTestSucceeded = false
+        connectionTestMessage = windowsBridgeInstruction
         appendLog("Disconnected from the Windows bridge")
     }
 

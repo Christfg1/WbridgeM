@@ -146,16 +146,26 @@ public enum ControlMacBridgePhase
     Active
 }
 
+public enum MacScreenPosition
+{
+    LeftOfWindowsMonitor,
+    RightOfWindowsMonitor,
+    AboveWindowsMonitor,
+    BelowWindowsMonitor
+}
+
 public sealed record ControlMacFromWindowsRequest
 {
     public bool Enabled { get; init; }
+    public MacScreenPosition? ScreenPosition { get; init; }
 }
 
 public sealed record ControlMacFromWindowsStateDto
 {
     public bool Enabled { get; init; }
     public ControlMacBridgePhase Phase { get; init; }
-    public string ActivationEdge { get; init; } = "Right";
+    public MacScreenPosition ScreenPosition { get; init; } = MacScreenPosition.LeftOfWindowsMonitor;
+    public string ActivationEdge { get; init; } = "Left";
     public string EscapeHotkey { get; init; } = "Ctrl + Alt + Windows + Esc";
     public bool RequiresMacAccessibilityPermission { get; init; } = true;
 }

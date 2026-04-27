@@ -37,7 +37,9 @@ public sealed class ControlMacInputBridgeService
     private const ushort VkRWin = 0x5C;
 
     private const int SystemMetricSmXVirtualScreen = 76;
+    private const int SystemMetricSmYVirtualScreen = 77;
     private const int SystemMetricSmCxVirtualScreen = 78;
+    private const int SystemMetricSmCyVirtualScreen = 79;
 
     private readonly BridgeEventHub _eventHub;
     private readonly ILogger<ControlMacInputBridgeService> _logger;
@@ -58,6 +60,7 @@ public sealed class ControlMacInputBridgeService
 
     private bool _enabled;
     private ControlMacBridgePhase _phase = ControlMacBridgePhase.Off;
+    private MacScreenPosition _screenPosition = MacScreenPosition.LeftOfWindowsMonitor;
     private NativePoint _anchorPoint;
 
     public ControlMacInputBridgeService(
@@ -130,10 +133,20 @@ public sealed class ControlMacInputBridgeService
         }
     }
 
-    public ControlMacFromWindowsStateDto SetEnabled(bool enabled)
+    public ControlMacFromWindowsStateDto SetEnabled(bool enabled, MacScreenPosition? screenPosition = null)
     {
         lock (_gate)
         {
+            if (screenPosition is not null && screenPosition.Value != _screenPosition)
+            {
+                if (_phase == ControlMacBridgePhase.Active)
+                {
+                    ExitActiveSessionUnsafe(returnToWindows: true);
+                }
+
+                _screenPosition = screenPosition.Value;
+            }
+
             _enabled = enabled;
 
             if (!enabled)
@@ -238,7 +251,7 @@ public sealed class ControlMacInputBridgeService
 
             if (_phase == ControlMacBridgePhase.Armed)
             {
-                if (message == WmMouseMove && IsAtRightEdge(mouseInfo.Point) && _eventHub.HasConnections)
+                if (message == WmMouseMove && IsAtActivationEdgeUnsafe(mouseInfo.Point) && _eventHub.HasConnections)
                 {
                     ActivateSessionUnsafe(mouseInfo.Point);
                     return (IntPtr)1;
@@ -390,11 +403,7 @@ public sealed class ControlMacInputBridgeService
     private void ActivateSessionUnsafe(NativePoint cursorPoint)
     {
         _phase = ControlMacBridgePhase.Active;
-        _anchorPoint = new NativePoint
-        {
-            X = GetVirtualRightEdge() - 2,
-            Y = cursorPoint.Y
-        };
+        _anchorPoint = BuildAnchorPointUnsafe(cursorPoint);
 
         SetCursorPos(_anchorPoint.X, _anchorPoint.Y);
         QueueStateSnapshotUnsafe(BuildStateUnsafe());
@@ -413,7 +422,8 @@ public sealed class ControlMacInputBridgeService
 
         if (returnToWindows)
         {
-            SetCursorPos(Math.Max(GetVirtualLeftEdge() + 1, _anchorPoint.X - 24), _anchorPoint.Y);
+            var returnPoint = BuildReturnPointUnsafe();
+            SetCursorPos(returnPoint.X, returnPoint.Y);
         }
 
         QueueStateSnapshotUnsafe(BuildStateUnsafe());
@@ -443,7 +453,9 @@ public sealed class ControlMacInputBridgeService
         return new ControlMacFromWindowsStateDto
         {
             Enabled = _enabled,
-            Phase = _phase
+            Phase = _phase,
+            ScreenPosition = _screenPosition,
+            ActivationEdge = GetActivationEdgeLabelUnsafe()
         };
     }
 
@@ -480,6 +492,94 @@ public sealed class ControlMacInputBridgeService
         return virtualKeys.Any(virtualKey => _pressedKeys.Contains(virtualKey));
     }
 
+    private string GetActivationEdgeLabelUnsafe()
+    {
+        return _screenPosition switch
+        {
+            MacScreenPosition.LeftOfWindowsMonitor => "Left",
+            MacScreenPosition.RightOfWindowsMonitor => "Right",
+            MacScreenPosition.AboveWindowsMonitor => "Top",
+            MacScreenPosition.BelowWindowsMonitor => "Bottom",
+            _ => "Left"
+        };
+    }
+
+    private NativePoint BuildAnchorPointUnsafe(NativePoint cursorPoint)
+    {
+        return _screenPosition switch
+        {
+            MacScreenPosition.LeftOfWindowsMonitor => new NativePoint
+            {
+                X = GetVirtualLeftEdge() + 1,
+                Y = cursorPoint.Y
+            },
+            MacScreenPosition.RightOfWindowsMonitor => new NativePoint
+            {
+                X = GetVirtualRightEdge() - 2,
+                Y = cursorPoint.Y
+            },
+            MacScreenPosition.AboveWindowsMonitor => new NativePoint
+            {
+                X = cursorPoint.X,
+                Y = GetVirtualTopEdge() + 1
+            },
+            MacScreenPosition.BelowWindowsMonitor => new NativePoint
+            {
+                X = cursorPoint.X,
+                Y = GetVirtualBottomEdge() - 2
+            },
+            _ => new NativePoint
+            {
+                X = GetVirtualLeftEdge() + 1,
+                Y = cursorPoint.Y
+            }
+        };
+    }
+
+    private NativePoint BuildReturnPointUnsafe()
+    {
+        return _screenPosition switch
+        {
+            MacScreenPosition.LeftOfWindowsMonitor => new NativePoint
+            {
+                X = Math.Min(GetVirtualRightEdge() - 2, _anchorPoint.X + 24),
+                Y = _anchorPoint.Y
+            },
+            MacScreenPosition.RightOfWindowsMonitor => new NativePoint
+            {
+                X = Math.Max(GetVirtualLeftEdge() + 1, _anchorPoint.X - 24),
+                Y = _anchorPoint.Y
+            },
+            MacScreenPosition.AboveWindowsMonitor => new NativePoint
+            {
+                X = _anchorPoint.X,
+                Y = Math.Min(GetVirtualBottomEdge() - 2, _anchorPoint.Y + 24)
+            },
+            MacScreenPosition.BelowWindowsMonitor => new NativePoint
+            {
+                X = _anchorPoint.X,
+                Y = Math.Max(GetVirtualTopEdge() + 1, _anchorPoint.Y - 24)
+            },
+            _ => new NativePoint
+            {
+                X = Math.Min(GetVirtualRightEdge() - 2, _anchorPoint.X + 24),
+                Y = _anchorPoint.Y
+            }
+        };
+    }
+
+    private bool IsAtActivationEdgeUnsafe(NativePoint point)
+    {
+        return _screenPosition switch
+        {
+            MacScreenPosition.LeftOfWindowsMonitor => point.X <= GetVirtualLeftEdge() + 1,
+            MacScreenPosition.RightOfWindowsMonitor => point.X >= GetVirtualRightEdge() - 1,
+            MacScreenPosition.AboveWindowsMonitor => point.Y <= GetVirtualTopEdge() + 1,
+            MacScreenPosition.BelowWindowsMonitor => point.Y >= GetVirtualBottomEdge() - 1,
+            _ => point.X <= GetVirtualLeftEdge() + 1
+        };
+    }
+
     private static int GetVirtualRightEdge()
     {
         return GetSystemMetrics(SystemMetricSmXVirtualScreen) + GetSystemMetrics(SystemMetricSmCxVirtualScreen);
@@ -490,9 +590,14 @@ public sealed class ControlMacInputBridgeService
         return GetSystemMetrics(SystemMetricSmXVirtualScreen);
     }
 
-    private static bool IsAtRightEdge(NativePoint point)
+    private static int GetVirtualTopEdge()
     {
-        return point.X >= GetVirtualRightEdge() - 1;
+        return GetSystemMetrics(SystemMetricSmYVirtualScreen);
+    }
+
+    private static int GetVirtualBottomEdge()
+    {
+        return GetSystemMetrics(SystemMetricSmYVirtualScreen) + GetSystemMetrics(SystemMetricSmCyVirtualScreen);
     }
 
     private static int GetSignedHighWord(uint value)
